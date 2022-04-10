@@ -73,3 +73,6 @@ outTmp/
 /test.output
 /kotlin-native/dist
 kotlin-ide/
+
+# Own comments
+WORK_COMMENTS.txt
