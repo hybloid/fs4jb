@@ -28,6 +28,7 @@ class FileSystem(val disk: Disk) {
     fun mount() {
         disk.open()
         sb = SuperBlock.read(disk)
+        assert(sb.magicNumber == Constants.MAGIC) // TODO : add hard check
         logger.info("Disk mounted")
     }
 
