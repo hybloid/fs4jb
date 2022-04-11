@@ -16,17 +16,20 @@ class Constants {
         const val INODE_SIZE = 32
         const val LINKS_IN_INODE = 5
         const val INODE_TOTAL_LINKS_COUNT = LINKS_IN_INODE + BLOCK_SIZE / Int.SIZE_BYTES
-        val INODES_PER_BLOCK_D = ceil(BLOCK_SIZE / INODE_SIZE.toDouble())
-        val INODES_PER_BLOCK = INODES_PER_BLOCK_D.toInt()
+        val INODES_PER_BLOCK = ceil(BLOCK_SIZE / INODE_SIZE.toDouble()).toInt()
 
-        // TODO : find a better place, not really a constant
-        val ZERO_DATA_BLOCK : ByteBuffer
-            get() = field.duplicate()
+        fun ZERO_BLOCK() : ByteBuffer {
+            val buf = ByteBuffer.allocate(BLOCK_SIZE)
+            buf.put(ZERO_BLOCK_CONTENT)
+            buf.rewind()
+            return buf
+        }
+
+        private val ZERO_BLOCK_CONTENT : ByteBuffer = ByteBuffer.allocate(BLOCK_SIZE)
 
         init {
-            ZERO_DATA_BLOCK = ByteBuffer.allocate(BLOCK_SIZE)
-            ZERO_DATA_BLOCK.put(ByteArray(BLOCK_SIZE))
-            ZERO_DATA_BLOCK.rewind()
+            ZERO_BLOCK_CONTENT.put(ByteArray(BLOCK_SIZE))
+            ZERO_BLOCK_CONTENT.rewind()
         }
     }
 }

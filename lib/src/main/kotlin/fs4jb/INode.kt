@@ -3,7 +3,6 @@ package fs4jb
 import fs4jb.BitMaskOps.Companion.check
 import fs4jb.BitMaskOps.Companion.set
 import java.nio.ByteBuffer
-import kotlin.math.floor
 
 data class INode (val number : Int,
                   var valid : Boolean,
@@ -14,7 +13,6 @@ data class INode (val number : Int,
 
     fun readIndirect(buffer: ByteBuffer) {
         assert(indirect != 0)
-        buffer.flip()
         // TODO : should we stop loading on 0? or better set 0
         for (i in Constants.LINKS_IN_INODE until Constants.INODE_TOTAL_LINKS_COUNT) {
             links[i] = buffer.int
@@ -51,6 +49,7 @@ data class INode (val number : Int,
 
         if (number != other.number) return false
         if (valid != other.valid) return false
+        if (isDir != other.isDir) return false
         if (size != other.size) return false
         if (!links.contentEquals(other.links)) return false
         if (indirect != other.indirect) return false
@@ -61,6 +60,7 @@ data class INode (val number : Int,
     override fun hashCode(): Int {
         var result = number
         result = 31 * result + valid.hashCode()
+        result = 31 * result + isDir.hashCode()
         result = 31 * result + size
         result = 31 * result + links.contentHashCode()
         result = 31 * result + indirect
@@ -87,7 +87,7 @@ data class INode (val number : Int,
             }
         }
 
-        private fun getBlockNumber(number: Int) = floor(number / Constants.INODES_PER_BLOCK_D).toInt()
-        private fun getPositionInBlock(number: Int) = number - getBlockNumber(number) * Constants.INODES_PER_BLOCK
+        fun getBlockNumber(number: Int) = number / Constants.INODES_PER_BLOCK
+        private fun getPositionInBlock(number: Int) = number.mod(Constants.INODES_PER_BLOCK) * Constants.INODE_SIZE
     }
 }
