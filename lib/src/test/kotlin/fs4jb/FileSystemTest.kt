@@ -93,4 +93,27 @@ class FileSystemTest {
         inputBuffer.rewind()
         assertEquals(gaudamus, inputBuffer)
     }
+
+    @Test
+    fun readWriteHugeNumber() {
+        val blocks = 10
+        val disk = Disk(Paths.get("build", "out", "readWriteHugeNumber.jb"), blocks)
+        val fs = FileSystem(disk)
+        fs.format()
+        fs.mount()
+        val inode = fs.createINode()
+        val array = ByteArray(Constants.BLOCK_SIZE * 6) { 123 }
+        val wrappedArray = ByteBuffer.wrap(array)
+        val size = wrappedArray.limit()
+        fs.write(inode, wrappedArray, Constants.BLOCK_SIZE - 10, size)
+        fs.umount()
+        wrappedArray.rewind()
+        fs.mount()
+        val inode2 = fs.retrieveINode(inode.number)
+        assertEquals(inode, inode2)
+        val inputBuffer = ByteBuffer.allocate(size)
+        fs.read(inode2, inputBuffer, Constants.BLOCK_SIZE - 10, size)
+        inputBuffer.rewind()
+        assertEquals(wrappedArray, inputBuffer)
+    }
 }
