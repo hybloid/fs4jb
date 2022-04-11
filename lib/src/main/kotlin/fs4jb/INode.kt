@@ -21,7 +21,7 @@ data class INode (val number : Int,
 
     fun writeIndirect(buffer: ByteBuffer) {
         assert(indirect != 0)
-        buffer.rewind()
+        buffer.clear()
         // TODO : should we stop loading on 0? or better set 0
         for (i in Constants.LINKS_IN_INODE until Constants.INODE_TOTAL_LINKS_COUNT) {
             buffer.putInt(links[i])

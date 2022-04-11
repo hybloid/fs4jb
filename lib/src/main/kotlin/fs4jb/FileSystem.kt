@@ -60,7 +60,12 @@ class FileSystem(val disk: Disk) {
     fun retrieveINode(n : Int) : INode {
         val buf = Constants.ZERO_BLOCK()
         disk.read(INode.getBlockNumber(n), buf)
-        return INode.read(n, buf)
+        val inode = INode.read(n, buf)
+        if (inode.indirect != 0) {
+            disk.read(inode.indirect, buf)
+            inode.readIndirect(buf)
+        }
+        return inode
     }
 
     // TODO : get rid of INode, use number
@@ -129,6 +134,13 @@ class FileSystem(val disk: Disk) {
         // allocate needed blocks
         var inodeUpdateNeeded = false
         for (i in startBlockId..endBlockId) {
+            if (i >= Constants.LINKS_IN_INODE && inode.indirect == 0) {
+                assert(freeDataBlocks.size > 0)
+                inode.indirect = freeDataBlocks.removeFirst()
+                disk.write(inode.indirect, buf) // TODO : do this only when this block was not allocated
+                inodeUpdateNeeded = true
+            }
+
             if (inode.links[i] == 0) {
                 assert(freeDataBlocks.size > 0)
                 inode.links[i] = freeDataBlocks.removeFirst()
@@ -172,6 +184,10 @@ class FileSystem(val disk: Disk) {
             disk.read(INode.getBlockNumber(inode.number), buf)
             inode.write(buf)
             disk.write(INode.getBlockNumber(inode.number), buf)
+            if (inode.indirect != 0) {
+                inode.writeIndirect(buf)
+                disk.write(inode.indirect, buf)
+            }
         }
         return length
     }
