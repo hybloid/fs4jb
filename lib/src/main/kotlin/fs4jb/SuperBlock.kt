@@ -28,7 +28,6 @@ data class SuperBlock(val magicNumber: Int,
         fun read(disk: Disk) : SuperBlock {
             val buf = ByteBuffer.allocate(Constants.SUPERBLOCK_SIZE)
             disk.readSb(buf)
-            buf.flip()
             return SuperBlock(magicNumber = buf.getInt(0 * Int.SIZE_BYTES),
                 blocks = buf.getInt(1 * Int.SIZE_BYTES),
                 inodeBlocks = buf.getInt(2 * Int.SIZE_BYTES),

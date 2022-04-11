@@ -36,7 +36,9 @@ class Disk(private val path : Path, val nBlocks : Int) {
         assert(buffer.capacity() == Constants.BLOCK_SIZE)
         // TODO: cache
 
-        return channelRead(buffer, blockOffset(blockNum))
+        val count = channelRead(buffer, blockOffset(blockNum))
+        assert(count == Constants.BLOCK_SIZE)
+        return count
     }
 
     fun write(blockNum : Int, buffer : ByteBuffer) : Int {
@@ -44,7 +46,9 @@ class Disk(private val path : Path, val nBlocks : Int) {
         assert(buffer.capacity() == Constants.BLOCK_SIZE)
         // TODO: cache reset
 
-        return channelWrite(buffer, blockOffset(blockNum))
+        val count = channelWrite(buffer, blockOffset(blockNum))
+        assert(count == Constants.BLOCK_SIZE)
+        return count
     }
 
     private fun blockOffset(blockNum : Int) : Long =
@@ -53,12 +57,15 @@ class Disk(private val path : Path, val nBlocks : Int) {
     private fun channelRead(buffer : ByteBuffer, offset : Long) : Int {
         buffer.clear()
         Metrics.incRead()
-        return channel.read(buffer, offset)
+        channel.position(offset)
+        val count = channel.read(buffer)
+        buffer.flip()
+        return count
     }
 
     private fun channelWrite(buffer : ByteBuffer, offset : Long) : Int {
         buffer.rewind()
         Metrics.incWrite()
-        return channel.write(buffer, offset)
+        return channel.write(buffer, offset) // do not clear, since data could be reused (i.e. empty block)
     }
 }
