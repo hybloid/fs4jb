@@ -24,7 +24,7 @@ class Constants {
         const val DELIMITER = "/"
         val CHARSET: Charset = Charset.forName("ASCII")
 
-        fun ZERO_BLOCK(): ByteBuffer {
+        fun zeroBlock(): ByteBuffer {
             val buf = ByteBuffer.allocate(BLOCK_SIZE)
             buf.put(ZERO_BLOCK_CONTENT)
             buf.rewind()
