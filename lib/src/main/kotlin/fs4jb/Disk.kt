@@ -22,32 +22,30 @@ class Disk(private val path: Path, val nBlocks: Int) {
     }
 
     fun readSb(buffer: ByteBuffer): Int {
-        assert(buffer.capacity() == Constants.SUPERBLOCK_SIZE)
+        if (buffer.capacity() != Constants.SUPERBLOCK_SIZE) throw FSArgumentsException("Incorrect arguments")
         return channelRead(buffer, Constants.SUPERBLOCK_BLOCK_OFFSET)
     }
 
     fun writeSb(buffer: ByteBuffer): Int {
-        assert(buffer.capacity() == Constants.SUPERBLOCK_SIZE)
+        if (buffer.capacity() != Constants.SUPERBLOCK_SIZE) throw FSArgumentsException("Incorrect arguments")
         return channelWrite(buffer, Constants.SUPERBLOCK_BLOCK_OFFSET)
     }
 
     fun read(blockNum: Int, buffer: ByteBuffer): Int {
-        assert(blockNum < nBlocks)
-        assert(buffer.capacity() == Constants.BLOCK_SIZE)
+        if (blockNum >= nBlocks || buffer.capacity() != Constants.BLOCK_SIZE) throw FSArgumentsException("Incorrect arguments")
         // TODO: cache
 
         val count = channelRead(buffer, blockOffset(blockNum))
-        assert(count == Constants.BLOCK_SIZE)
+        if (count != Constants.BLOCK_SIZE) throw FSIOException("IO error while reading")
         return count
     }
 
     fun write(blockNum: Int, buffer: ByteBuffer): Int {
-        assert(blockNum < nBlocks)
-        assert(buffer.capacity() == Constants.BLOCK_SIZE)
+        if (blockNum >= nBlocks || buffer.capacity() != Constants.BLOCK_SIZE) throw FSArgumentsException("Incorrect arguments")
         // TODO: cache reset
 
         val count = channelWrite(buffer, blockOffset(blockNum))
-        assert(count == Constants.BLOCK_SIZE)
+        if (count != Constants.BLOCK_SIZE) throw FSIOException("IO error while writing")
         return count
     }
 
