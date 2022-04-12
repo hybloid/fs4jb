@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class BitMaskOpsTest {
     @Test
     fun testOps() {
-        for (n in 0 .. 31) {
+        for (n in 0..31) {
             var i = 0
             assertFalse { i.check(n) }
             i = i.set1(n)

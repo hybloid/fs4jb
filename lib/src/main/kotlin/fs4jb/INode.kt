@@ -4,12 +4,14 @@ import fs4jb.BitMaskOps.Companion.check
 import fs4jb.BitMaskOps.Companion.set
 import java.nio.ByteBuffer
 
-data class INode (val number : Int,
-                  var valid : Boolean,
-                  var isDir : Boolean,
-                  var size : Int,
-                  var links : Array<Int>,
-                  var indirect : Int) {
+data class INode(
+    val number: Int,
+    var valid: Boolean,
+    var isDir: Boolean,
+    var size: Int,
+    var links: Array<Int>,
+    var indirect: Int
+) {
 
     fun indirectLoadNeeded() = indirect != 0 && links[Constants.LINKS_IN_INODE] == 0 // Could be a state
 
@@ -70,7 +72,7 @@ data class INode (val number : Int,
     }
 
     companion object {
-        fun read(number : Int, buffer : ByteBuffer) : INode {
+        fun read(number: Int, buffer: ByteBuffer): INode {
             buffer.position(getPositionInBlock(number))
             val mask = buffer.int
             val valid = mask.check(0)
