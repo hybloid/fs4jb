@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import kotlin.collections.ArrayDeque
 
 
-class FileSystem(val disk: Disk) {
+class FileSystem(private val disk: Disk) {
     lateinit var sb: SuperBlock
     private val logger = KotlinLogging.logger {}
     private val freeInodes = ArrayDeque<Int>()
@@ -27,7 +27,7 @@ class FileSystem(val disk: Disk) {
         sb.write(disk)
         // reserve data for inodes
         for (i in 0 until sb.inodeBlocks) {
-            disk.write(i, Constants.ZERO_BLOCK())
+            disk.write(i, Constants.zeroBlock())
         }
         if (!skipRootCreation) {
             for (i in 0 until sb.inodeBlocks * Constants.INODES_PER_BLOCK) {
@@ -46,7 +46,7 @@ class FileSystem(val disk: Disk) {
 
     fun createFile(name: String, target: INode): INode {
         val inode = createINode()
-        writeInodeToDisk(inode, Constants.ZERO_BLOCK())
+        writeInodeToDisk(inode, Constants.zeroBlock())
         addToDir(name, inode, target)
         return inode
     }
@@ -147,21 +147,6 @@ class FileSystem(val disk: Disk) {
         return list
     }
 
-    private fun wrapDentryName(name: String): ByteBuffer {
-        val bufWithNameToCompare = ByteBuffer.allocate(Constants.FILENAME_SIZE)
-        bufWithNameToCompare.put(name.toByteArray(Constants.CHARSET))
-        bufWithNameToCompare.rewind()
-        return bufWithNameToCompare
-    }
-
-    private fun trim(bytes: ByteArray): ByteArray {
-        var i = bytes.size - 1
-        while (i >= 0 && bytes[i].toInt() == 0) {
-            --i
-        }
-        return bytes.copyOf(i + 1)
-    }
-
     fun mount() {
         disk.open()
         sb = SuperBlock.read(disk)
@@ -180,7 +165,7 @@ class FileSystem(val disk: Disk) {
 
     fun createINode(): INode {
         assert(freeInodes.size > 0)
-        val buf = Constants.ZERO_BLOCK()
+        val buf = Constants.zeroBlock()
         val nextNumber = freeInodes.removeFirst()
         disk.read(INode.getBlockNumber(nextNumber), buf)
         val inode = INode.read(nextNumber, buf)
@@ -190,7 +175,7 @@ class FileSystem(val disk: Disk) {
     }
 
     fun retrieveINode(n: Int): INode {
-        val buf = Constants.ZERO_BLOCK()
+        val buf = Constants.zeroBlock()
         disk.read(INode.getBlockNumber(n), buf)
         val inode = INode.read(n, buf)
         if (inode.indirect != 0) {
@@ -208,7 +193,7 @@ class FileSystem(val disk: Disk) {
         assert(buffer.capacity() >= length)
         buffer.clear()
 
-        val buf = Constants.ZERO_BLOCK()
+        val buf = Constants.zeroBlock()
         if (inode.indirectLoadNeeded()) {
             // dummy safety, already done by retrieve node
             disk.read(inode.indirect, buf)
@@ -251,14 +236,14 @@ class FileSystem(val disk: Disk) {
         assert(start >= 0)
         assert(end < Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE)
         assert(buffer.capacity() >= length)
-        var buf = Constants.ZERO_BLOCK()
+        var buf = Constants.zeroBlock()
         if (inode.indirectLoadNeeded()) {
             // dummy safety, already done by retrieve node
             disk.read(inode.indirect, buf)
             inode.readIndirect(buf)
         }
         // Need it empty for allocation of new blocks
-        buf = Constants.ZERO_BLOCK()
+        buf = Constants.zeroBlock()
         val startBlockId = start / Constants.BLOCK_SIZE
         val startBlockPosition = start.mod(Constants.BLOCK_SIZE)
         val endBlockId = end / Constants.BLOCK_SIZE
@@ -322,7 +307,7 @@ class FileSystem(val disk: Disk) {
     fun truncate(inode: INode, offset: Int) {
         assert(offset >= 0)
         assert(offset < inode.size)
-        val buf = Constants.ZERO_BLOCK()
+        val buf = Constants.zeroBlock()
         if (inode.indirectLoadNeeded()) {
             // dummy safety, already done by retrieve node
             disk.read(inode.indirect, buf)
@@ -369,10 +354,25 @@ class FileSystem(val disk: Disk) {
         }
     }
 
+    private fun wrapDentryName(name: String): ByteBuffer {
+        val bufWithNameToCompare = ByteBuffer.allocate(Constants.FILENAME_SIZE)
+        bufWithNameToCompare.put(name.toByteArray(Constants.CHARSET))
+        bufWithNameToCompare.rewind()
+        return bufWithNameToCompare
+    }
+
+    private fun trim(bytes: ByteArray): ByteArray {
+        var i = bytes.size - 1
+        while (i >= 0 && bytes[i].toInt() == 0) {
+            --i
+        }
+        return bytes.copyOf(i + 1)
+    }
+
     private fun fsck() {
         // TODO : introduce states and check the state of FS
-        val buf = Constants.ZERO_BLOCK()
-        val indirectBuf = Constants.ZERO_BLOCK()
+        val buf = Constants.zeroBlock()
+        val indirectBuf = Constants.zeroBlock()
         val busyBlocks = mutableSetOf<Int>()
         for (i in 0 until sb.inodeBlocks) {
             disk.read(i, buf)

@@ -12,7 +12,7 @@ class DiskTest {
         val disk = Disk(Paths.get("build", "out", "test.jb"), blocks)
 
         disk.open(true)
-        val buf = Constants.ZERO_BLOCK()
+        val buf = Constants.zeroBlock()
         buf.put("HelloWorld".toByteArray())
         for (i in 0 until blocks) {
             assertEquals(disk.write(i, buf), Constants.BLOCK_SIZE)
