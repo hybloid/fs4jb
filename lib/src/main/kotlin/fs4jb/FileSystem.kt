@@ -1,6 +1,7 @@
 package fs4jb
 
 import mu.KotlinLogging
+import java.io.File
 import java.nio.ByteBuffer
 import kotlin.collections.ArrayDeque
 
@@ -90,8 +91,9 @@ class FileSystem(private val disk: Disk) {
     fun getRootFolder() = retrieveINode(0)
 
     fun open(path: String): INode {
-        val subPaths = path.split(Constants.SEPARATOR)
         var inode = getRootFolder()
+        val subPaths = path.split(Constants.SEPARATOR)
+        if (path == Constants.SEPARATOR) return inode
         for (i in 1 until subPaths.size) {
             inode = locate(subPaths[i], inode)
         }
@@ -245,6 +247,10 @@ class FileSystem(private val disk: Disk) {
     fun read(inode: INode, buffer: ByteBuffer) = read(inode, buffer, 0, buffer.limit())
 
     fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
+        if (length == 0) {
+            buffer.clear()
+            return 0
+        }
         val end = start + length - 1
         if (start < 0 || end >= inode.size || buffer.capacity() < length) {
             throw FSArgumentsException("Incorrect arguments")
@@ -287,6 +293,10 @@ class FileSystem(private val disk: Disk) {
     fun append(inode: INode, buffer: ByteBuffer) = write(inode, buffer, inode.size, buffer.limit())
 
     fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
+        if (length == 0) {
+            buffer.clear()
+            return 0
+        }
         val end = start + length - 1
         if (start < 0 || end >= Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE || buffer.capacity() < length) {
             throw FSArgumentsException("Incorrect arguments")
@@ -322,7 +332,9 @@ class FileSystem(private val disk: Disk) {
         if (startBlockId == endBlockId) {
             // special case
             buf.put(buffer)
-            if (buf.position() != endBlockPosition + 1) throw FSIOException("IO when writing to file")
+            if (buf.position() != endBlockPosition + 1) {
+                throw FSIOException("IO when writing to file")
+            }
             disk.write(inode.links[startBlockId], buf)
             writeCount = buffer.limit()
         } else {
@@ -391,6 +403,8 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS Misc routines
      */
+    fun path2fsPath(path: String) = "${Constants.SEPARATOR}${path.replace(File.separator, Constants.SEPARATOR)}"
+
     private fun writeInodeToDisk(inode: INode, buf: ByteBuffer) {
         disk.read(INode.getBlockNumber(inode.number), buf)
         inode.write(buf)
@@ -428,8 +442,8 @@ class FileSystem(private val disk: Disk) {
             buf.put(inodeBlocksBuf.array(), i * Constants.BLOCK_SIZE, Constants.BLOCK_SIZE)
             for (j in 0 until Constants.INODES_PER_BLOCK) {
                 val number = i * Constants.INODES_PER_BLOCK + j
-                val inode = INode.read(number, buf)
-                if (inode.valid) {
+                if (INode.isValid(number, buf)) {
+                    val inode = INode.read(number, buf)
                     if (inode.indirect != 0) {
                         disk.read(inode.indirect, indirectBuf)
                         inode.readIndirect(indirectBuf)
