@@ -39,7 +39,7 @@ class FileSystemHighLevelOpsTest {
     }
 
     @Test
-    fun createFile() {
+    fun createFileInRoot() {
         val fs = prepareFs("createFile")
         var root = fs.getRootFolder()
         val file = fs.createFile("README.txt", root)

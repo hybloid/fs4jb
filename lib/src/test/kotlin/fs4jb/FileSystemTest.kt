@@ -19,22 +19,20 @@ class FileSystemTest {
     }
 
     @Test
-    fun formatFs() {
+    fun formatFsWithoutRootINode() {
         val blocks = 10
         val fs = prepareFs("formatFs", blocks)
         val blockCount = ceil(blocks / Constants.INODE_PROC).toInt()
         assertEquals(fs.sb.blocks, blocks)
         assertEquals(fs.sb.inodeBlocks, blockCount)
         assertEquals(fs.sb.inodes, blockCount * Constants.INODES_PER_BLOCK)
-        // FSCK
-        // TODO : will fail once we initialize 0 inode
         assertEquals(fs.freeStat().first, fs.sb.inodes)
         assertEquals(fs.freeStat().second, fs.sb.blocks - fs.sb.inodeBlocks)
         fs.umount()
     }
 
     @Test
-    fun readWriteStartPage() {
+    fun readWriteAtPageStart() {
         val fs = prepareFs("readWriteStartPage")
         val inode = fs.createINode()
         val gaudamus = ByteBuffer.wrap("Gaudeamus igitur, Iuvenes dum sumus".toByteArray())
@@ -51,7 +49,7 @@ class FileSystemTest {
     }
 
     @Test
-    fun readWriteEndPages() {
+    fun readWriteAtPageName() {
         val fs = prepareFs("readWriteEndPages")
         val inode = fs.createINode()
         val gaudamus = ByteBuffer.wrap("Gaudeamus igitur, Iuvenes dum sumus".toByteArray())
@@ -87,7 +85,7 @@ class FileSystemTest {
     }
 
     @Test
-    fun readWriteHugeNumber() {
+    fun readWriteWithIndirectPages() {
         val fs = prepareFs("readWriteHugeNumber")
         val inode = fs.createINode()
         val array = ByteArray(Constants.BLOCK_SIZE * 6) { 123 }
@@ -106,7 +104,7 @@ class FileSystemTest {
     }
 
     @Test
-    fun truncateFull() {
+    fun truncateToEmpty() {
         val fs = prepareFs("truncateFull")
         val inodeCount = fs.freeStat().first
         val dataBlockCount = fs.freeStat().second
@@ -154,7 +152,7 @@ class FileSystemTest {
     }
 
     @Test
-    fun truncateFew() {
+    fun truncateFewBytes() {
         val fs = prepareFs("truncateFew")
         val inode = fs.createINode()
         val array = ByteArray(5)

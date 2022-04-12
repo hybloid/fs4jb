@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 
 class BitMaskOpsTest {
     @Test
-    fun testOps() {
+    fun verifySimpleBitOps() {
         for (n in 0..31) {
             var i = 0
             assertFalse { i.check(n) }
