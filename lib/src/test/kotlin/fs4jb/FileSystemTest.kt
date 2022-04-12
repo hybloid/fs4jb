@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 
 class FileSystemTest {
-    private fun prepareFs(name : String, blocks : Int = 10) : FileSystem {
+    private fun prepareFs(name: String, blocks: Int = 10): FileSystem {
         val disk = Disk(Paths.get("build", "out", "$name.jb"), blocks)
         val fs = FileSystem(disk)
         fs.format(skipRootCreation = true)
@@ -22,7 +22,7 @@ class FileSystemTest {
     fun formatFs() {
         val blocks = 10
         val fs = prepareFs("formatFs", blocks)
-        val blockCount = ceil(blocks/Constants.INODE_PROC).toInt()
+        val blockCount = ceil(blocks / Constants.INODE_PROC).toInt()
         assertEquals(fs.sb.blocks, blocks)
         assertEquals(fs.sb.inodeBlocks, blockCount)
         assertEquals(fs.sb.inodes, blockCount * Constants.INODES_PER_BLOCK)

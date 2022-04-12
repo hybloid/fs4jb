@@ -3,12 +3,14 @@ package fs4jb
 import java.nio.ByteBuffer
 import kotlin.math.ceil
 
-data class SuperBlock(val magicNumber: Int,
-                      val blocks : Int,
-                      val inodeBlocks : Int,
-                      val inodes : Int) {
+data class SuperBlock(
+    val magicNumber: Int,
+    val blocks: Int,
+    val inodeBlocks: Int,
+    val inodes: Int
+) {
 
-    constructor(blocks : Int) : this(
+    constructor(blocks: Int) : this(
         magicNumber = Constants.MAGIC,
         blocks = blocks,
         inodeBlocks = ceil(blocks / Constants.INODE_PROC).toInt(),
@@ -25,13 +27,15 @@ data class SuperBlock(val magicNumber: Int,
     }
 
     companion object {
-        fun read(disk: Disk) : SuperBlock {
+        fun read(disk: Disk): SuperBlock {
             val buf = ByteBuffer.allocate(Constants.SUPERBLOCK_SIZE)
             disk.readSb(buf)
-            return SuperBlock(magicNumber = buf.getInt(0 * Int.SIZE_BYTES),
+            return SuperBlock(
+                magicNumber = buf.getInt(0 * Int.SIZE_BYTES),
                 blocks = buf.getInt(1 * Int.SIZE_BYTES),
                 inodeBlocks = buf.getInt(2 * Int.SIZE_BYTES),
-                inodes = buf.getInt(3 * Int.SIZE_BYTES))
+                inodes = buf.getInt(3 * Int.SIZE_BYTES)
+            )
         }
     }
 

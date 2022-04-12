@@ -21,7 +21,7 @@ class FileSystem(val disk: Disk) {
     }
 
     // FIXME : Test only argument, example of bad design. Remove and adjust all failing tests
-    fun format(skipRootCreation : Boolean = false) {
+    fun format(skipRootCreation: Boolean = false) {
         sb = SuperBlock(disk.nBlocks)
         disk.open(true)
         sb.write(disk)
@@ -44,14 +44,14 @@ class FileSystem(val disk: Disk) {
 
     fun getRootFolder() = retrieveINode(0)
 
-    fun createFile(name : String, target : INode) : INode {
+    fun createFile(name: String, target: INode): INode {
         val inode = createINode()
         writeInodeToDisk(inode, Constants.ZERO_BLOCK())
         addToDir(name, inode, target)
         return inode
     }
 
-    fun createDir(name : String, target : INode? = null) : INode {
+    fun createDir(name: String, target: INode? = null): INode {
         val inode = createINode()
         inode.isDir = true
         val buffer = ByteBuffer.allocate(Constants.DENTRY_SIZE * 2)
@@ -72,7 +72,7 @@ class FileSystem(val disk: Disk) {
         return inode
     }
 
-    fun addToDir(name : String, source: INode, target : INode) {
+    fun addToDir(name: String, source: INode, target: INode) {
         // FIXME: we do not check name duplicates here
         // FIXME: we do not check . and .. here
         assert(!name.contains(Constants.DELIMITER))
@@ -83,7 +83,7 @@ class FileSystem(val disk: Disk) {
         write(target, bufToAppend, target.size, bufToAppend.limit())
     }
 
-    fun removeFromDir(source: INode, target : INode) {
+    fun removeFromDir(source: INode, target: INode) {
         // FIXME: we do not check . and .. here
         assert(target.size.mod(Constants.DENTRY_SIZE) == 0)
         val dentries = target.size / Constants.DENTRY_SIZE
@@ -110,7 +110,7 @@ class FileSystem(val disk: Disk) {
         assert(false) // we should never reach this point
     }
 
-    fun findInDir(name : String, target: INode) : INode? {
+    fun findInDir(name: String, target: INode): INode? {
         assert(target.size.mod(Constants.DENTRY_SIZE) == 0)
         val dentries = target.size / Constants.DENTRY_SIZE
         assert(dentries >= 2)
@@ -130,7 +130,7 @@ class FileSystem(val disk: Disk) {
         return null
     }
 
-    fun listDir(target: INode) : List<Pair<String, Int>> {
+    fun listDir(target: INode): List<Pair<String, Int>> {
         assert(target.size.mod(Constants.DENTRY_SIZE) == 0)
         val dentries = target.size / Constants.DENTRY_SIZE
         assert(dentries >= 2)
@@ -147,7 +147,7 @@ class FileSystem(val disk: Disk) {
         return list
     }
 
-    private fun wrapDentryName(name : String) : ByteBuffer {
+    private fun wrapDentryName(name: String): ByteBuffer {
         val bufWithNameToCompare = ByteBuffer.allocate(Constants.FILENAME_SIZE)
         bufWithNameToCompare.put(name.toByteArray(Constants.CHARSET))
         bufWithNameToCompare.rewind()
@@ -178,7 +178,7 @@ class FileSystem(val disk: Disk) {
         freeDataBlocks.clear()
     }
 
-    fun createINode() : INode {
+    fun createINode(): INode {
         assert(freeInodes.size > 0)
         val buf = Constants.ZERO_BLOCK()
         val nextNumber = freeInodes.removeFirst()
@@ -189,7 +189,7 @@ class FileSystem(val disk: Disk) {
         return inode
     }
 
-    fun retrieveINode(n : Int) : INode {
+    fun retrieveINode(n: Int): INode {
         val buf = Constants.ZERO_BLOCK()
         disk.read(INode.getBlockNumber(n), buf)
         val inode = INode.read(n, buf)
@@ -201,7 +201,7 @@ class FileSystem(val disk: Disk) {
     }
 
     // TODO : get rid of INode, use number
-    fun read(inode : INode, buffer : ByteBuffer, start : Int, length : Int) : Int {
+    fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         val end = start + length - 1
         assert(start >= 0)
         assert(end < inode.size)
@@ -216,7 +216,7 @@ class FileSystem(val disk: Disk) {
         }
         val startBlockId = start / Constants.BLOCK_SIZE
         val startBlockPosition = start.mod(Constants.BLOCK_SIZE)
-        val endBlockId =  end / Constants.BLOCK_SIZE
+        val endBlockId = end / Constants.BLOCK_SIZE
         val endBlockPosition = end.mod(Constants.BLOCK_SIZE)
 
         var readen = 0
@@ -246,7 +246,7 @@ class FileSystem(val disk: Disk) {
     }
 
     // TODO : get rid of INode, use number
-    fun write(inode : INode, buffer : ByteBuffer, start : Int, length : Int) : Int {
+    fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         val end = start + length - 1
         assert(start >= 0)
         assert(end < Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE)
@@ -261,7 +261,7 @@ class FileSystem(val disk: Disk) {
         buf = Constants.ZERO_BLOCK()
         val startBlockId = start / Constants.BLOCK_SIZE
         val startBlockPosition = start.mod(Constants.BLOCK_SIZE)
-        val endBlockId =  end / Constants.BLOCK_SIZE
+        val endBlockId = end / Constants.BLOCK_SIZE
         val endBlockPosition = end.mod(Constants.BLOCK_SIZE)
         // allocate needed blocks
         var inodeUpdateNeeded = false
@@ -319,7 +319,7 @@ class FileSystem(val disk: Disk) {
         return length
     }
 
-    fun truncate(inode : INode, offset : Int) {
+    fun truncate(inode: INode, offset: Int) {
         assert(offset >= 0)
         assert(offset < inode.size)
         val buf = Constants.ZERO_BLOCK()
@@ -359,7 +359,7 @@ class FileSystem(val disk: Disk) {
         writeInodeToDisk(inode, buf)
     }
 
-    private fun writeInodeToDisk(inode: INode, buf : ByteBuffer) {
+    private fun writeInodeToDisk(inode: INode, buf: ByteBuffer) {
         disk.read(INode.getBlockNumber(inode.number), buf)
         inode.write(buf)
         disk.write(INode.getBlockNumber(inode.number), buf)
@@ -385,7 +385,7 @@ class FileSystem(val disk: Disk) {
                         iNode.readIndirect(indirectBuf)
                         busyBlocks.add(iNode.indirect)
                     }
-                    for (k in 0 .. Constants.INODE_TOTAL_LINKS_COUNT) {
+                    for (k in 0..Constants.INODE_TOTAL_LINKS_COUNT) {
                         if (iNode.links[k] != 0) {
                             busyBlocks.add(iNode.links[k])
                         } else {
