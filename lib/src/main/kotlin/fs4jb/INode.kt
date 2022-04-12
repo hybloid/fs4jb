@@ -13,10 +13,8 @@ data class INode(
     var indirect: Int
 ) {
 
-    fun indirectLoadNeeded() = indirect != 0 && links[Constants.LINKS_IN_INODE] == 0 // Could be a state
-
     fun readIndirect(buffer: ByteBuffer) {
-        assert(indirect != 0)
+        if (indirect == 0) throw FSIllegalStateException("Illegal state, operation not possible")
         // TODO : should we stop loading on 0? or better set 0
         for (i in Constants.LINKS_IN_INODE until Constants.INODE_TOTAL_LINKS_COUNT) {
             links[i] = buffer.int
@@ -24,7 +22,7 @@ data class INode(
     }
 
     fun writeIndirect(buffer: ByteBuffer) {
-        assert(indirect != 0)
+        if (indirect == 0) throw FSIllegalStateException("Illegal state, operation not possible")
         buffer.clear()
         // TODO : should we stop loading on 0? or better set 0
         for (i in Constants.LINKS_IN_INODE until Constants.INODE_TOTAL_LINKS_COUNT) {

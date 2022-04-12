@@ -41,7 +41,7 @@ class FileSystem(private val disk: Disk) {
     fun mount() {
         disk.open()
         sb = SuperBlock.read(disk)
-        assert(sb.magicNumber == Constants.MAGIC) // TODO : add hard check
+        if (sb.magicNumber != Constants.MAGIC) throw FSArgumentsException("Supplied disk image has incorrect structure")
         logger.info("Disk mounted")
         fsck()
         logger.info("FSCK completed")
@@ -115,16 +115,16 @@ class FileSystem(private val disk: Disk) {
     }
 
     fun move(entry: INode, srcFolder: INode, dstFolder: INode) {
-        if (!srcFolder.isDir || !dstFolder.isDir) throw FSArgumentsException("Invalid argument")
+        if (!srcFolder.isDir || !dstFolder.isDir) throw FSArgumentsException("Incorrect arguments")
         val name = deleteFromDir(entry, srcFolder)
         addToDir(name, entry, dstFolder)
     }
 
     fun rename(name: String, entry: INode, folder: INode) {
-        if (!folder.isDir) throw FSArgumentsException("Invalid argument")
+        if (!folder.isDir) throw FSArgumentsException("Incorrect arguments")
         // FIXME: we do not check . and .. here
         val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("Illegal state of FS")
+        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
         val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
         read(folder, targetBuf, 0, folder.size)
         for (i in 0 until dentries) {
@@ -159,7 +159,7 @@ class FileSystem(private val disk: Disk) {
 
     fun ls(folder: INode): List<Pair<String, Int>> {
         val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("Illegal state of FS")
+        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
         val list = mutableListOf<Pair<String, Int>>()
         val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
         read(folder, targetBuf, 0, folder.size)
@@ -177,7 +177,7 @@ class FileSystem(private val disk: Disk) {
         // FIXME: we do not check name duplicates here
         // FIXME: we do not check . and .. here
         if (name.contains(Constants.SEPARATOR) || name.length > Constants.FILENAME_SIZE) {
-            throw FSArgumentsException("Illegal arguments")
+            throw FSArgumentsException("Incorrect arguments")
         }
         val buffer = ByteBuffer.allocate(Constants.DENTRY_SIZE)
         buffer.put(wrapNameForDentry(name))
@@ -186,10 +186,10 @@ class FileSystem(private val disk: Disk) {
     }
 
     private fun deleteFromDir(entry: INode, folder: INode): String {
-        if (!folder.isDir) throw FSArgumentsException("Illegal arguments")
+        if (!folder.isDir) throw FSArgumentsException("Incorrect arguments")
         // FIXME: we do not check . and .. here
         val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("Illegal state of FS")
+        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
         val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
         read(folder, targetBuf, 0, folder.size)
         for (i in 0 until dentries) {
@@ -217,7 +217,7 @@ class FileSystem(private val disk: Disk) {
 
     private fun locate(name: String, folder: INode): INode {
         val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("Illegal state of FS")
+        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
         val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
         read(folder, targetBuf, 0, folder.size)
         val dentryName = ByteArray(Constants.FILENAME_SIZE)
@@ -246,9 +246,9 @@ class FileSystem(private val disk: Disk) {
 
     fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         val end = start + length - 1
-        assert(start >= 0)
-        assert(end < inode.size)
-        assert(buffer.capacity() >= length)
+        if (start < 0 || end >= inode.size || buffer.capacity() < length) {
+            throw FSArgumentsException("Incorrect arguments")
+        }
         buffer.clear()
 
         val buf = Constants.zeroBlock()
@@ -278,7 +278,7 @@ class FileSystem(private val disk: Disk) {
             buffer.put(buf.array(), 0, endPartLength)
             readCount += endPartLength
         }
-        assert(readCount == length)
+        if (readCount != length) throw FSIOException("Incorrect length was read")
         buffer.flip()
         return length
     }
@@ -288,9 +288,9 @@ class FileSystem(private val disk: Disk) {
 
     fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         val end = start + length - 1
-        assert(start >= 0)
-        assert(end < Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE)
-        assert(buffer.capacity() >= length)
+        if (start < 0 || end >= Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE || buffer.capacity() < length) {
+            throw FSArgumentsException("Incorrect arguments")
+        }
         buffer.rewind()
 
         val buf = Constants.zeroBlock()
@@ -302,14 +302,14 @@ class FileSystem(private val disk: Disk) {
         var inodeUpdateNeeded = false
         for (i in startBlockId..endBlockId) {
             if (i >= Constants.LINKS_IN_INODE && inode.indirect == 0) {
-                assert(freeDataBlocks.size > 0)
+                if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
                 inode.indirect = freeDataBlocks.removeFirst()
                 disk.write(inode.indirect, buf) // TODO : do this only when this block was not allocated
                 inodeUpdateNeeded = true
             }
 
             if (inode.links[i] == 0) {
-                assert(freeDataBlocks.size > 0)
+                if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
                 inode.links[i] = freeDataBlocks.removeFirst()
                 disk.write(inode.links[i], buf) // TODO : do this only when this block was not allocated
                 inodeUpdateNeeded = true
@@ -322,7 +322,7 @@ class FileSystem(private val disk: Disk) {
         if (startBlockId == endBlockId) {
             // special case
             buf.put(buffer)
-            assert(buf.position() == endBlockPosition + 1)
+            if (buf.position() != endBlockPosition + 1) throw FSIOException("IO when writing to file")
             disk.write(inode.links[startBlockId], buf)
             writeCount = buffer.limit()
         } else {
@@ -342,7 +342,7 @@ class FileSystem(private val disk: Disk) {
             disk.write(inode.links[endBlockId], buf)
             writeCount += endPartLength
         }
-        assert(writeCount == length)
+        if (writeCount != length) throw FSIOException("Incorrect length was written")
         // UPDATE INODE SIZE
         if (inode.size < end + 1) {
             inode.size = end + 1
@@ -355,8 +355,7 @@ class FileSystem(private val disk: Disk) {
     }
 
     fun truncate(inode: INode, offset: Int) {
-        assert(offset >= 0)
-        assert(offset < inode.size || offset == 0)
+        if (offset < 0 || offset >= inode.size && offset != 0) throw FSArgumentsException("Incorrect arguments")
         val buf = Constants.zeroBlock()
         val startBlockId = offset / Constants.BLOCK_SIZE
         val lastBlockId = inode.size / Constants.BLOCK_SIZE
@@ -437,7 +436,7 @@ class FileSystem(private val disk: Disk) {
                         if (inode.links[k] != 0) {
                             busyBlocks.add(inode.links[k])
                         } else {
-                            break // TODO : can be problematic in case of error in algorithm. Add assert and test
+                            break
                         }
                     }
                 } else {

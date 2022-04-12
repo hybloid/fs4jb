@@ -6,7 +6,6 @@ import java.nio.file.Paths
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 class FileSystemHighLevelOpsTest {
     private fun prepareFs(name: String, blocks: Int = 10): FileSystem {
@@ -18,38 +17,30 @@ class FileSystemHighLevelOpsTest {
     }
 
     @Test
-    fun listRoot() {
-        val fs = prepareFs("listRoot")
-        val result = fs.ls(fs.retrieveINode(0))
-        assertEquals(result.toString(), "[(., 0), (.., 0)]")
-        fs.umount()
+    fun appendAndWriteToFile() {
+        val fs = prepareFs("appendAndWriteToFile")
+        val file = fs.create("file", fs.getRootFolder())
+        fs.append(file, ByteBuffer.wrap("Hello ".toByteArray()))
+        fs.append(file, ByteBuffer.wrap("world!".toByteArray()))
+        assertEquals(String(fs.readToEnd(file)), "Hello world!")
+        fs.write(file, ByteBuffer.wrap("!".toByteArray()), 5, 1)
+        assertEquals(String(fs.readToEnd(file)), "Hello!world!")
+        fs.truncate(file, 5)
+        assertEquals(String(fs.readToEnd(file)), "Hello")
     }
 
     @Test
-    fun addFolderToRoot() {
-        val fs = prepareFs("addFolderToRoot")
-        val root = fs.getRootFolder()
-        fs.mkdir("1", root)
-        fs.mkdir("2", root)
-        fs.mkdir("3", root)
-        fs.remount()
-        val result = fs.ls(fs.retrieveINode(0))
-        assertEquals(result.toString(), "[(., 0), (.., 0), (1, 1), (2, 2), (3, 3)]")
-        fs.umount()
-    }
-
-    @Test
-    fun createFileInRoot() {
-        val fs = prepareFs("createFile")
-        var root = fs.getRootFolder()
-        val file = fs.create("README.txt", root)
-        val buffer = ByteBuffer.wrap("Hello world!".toByteArray())
-        fs.write(file, buffer)
-        fs.remount()
-        val foundFile = fs.open("/README.txt")
-        assertNotNull(foundFile)
-        assertEquals(String(fs.readToEnd(foundFile)), "Hello world!")
-        fs.umount()
+    fun readFromFile() {
+        val fs = prepareFs("readFromFile")
+        val file = fs.create("file", fs.getRootFolder())
+        fs.write(file, ByteBuffer.wrap("Hello world!".toByteArray()))
+        assertEquals(String(fs.readToEnd(file)), "Hello world!")
+        var buf = ByteBuffer.allocate(12)
+        fs.read(file, buf)
+        assertEquals(String(buf.array()), "Hello world!")
+        buf = ByteBuffer.allocate(6)
+        fs.read(file, buf, 6, 6)
+        assertEquals(String(buf.array()), "world!")
     }
 
     @Test
@@ -134,10 +125,9 @@ class FileSystemHighLevelOpsTest {
         val fs = prepareFs("deleteFromTheMiddle")
         val root = fs.getRootFolder()
         val dir1 = fs.mkdir("one", root)
-        val dir2 = fs.mkdir("two", root)
-        val dir3 = fs.mkdir("three", root)
+        fs.mkdir("two", root)
+        fs.mkdir("three", root)
         fs.delete(dir1, root)
-        val list = fs.ls(root)
         assertEquals(fs.ls(root).map { it.first }, listOf(".", "..", "two", "three"))
     }
 
@@ -145,21 +135,10 @@ class FileSystemHighLevelOpsTest {
     fun deleteFromTheEnd() {
         val fs = prepareFs("deleteFromTheEnd")
         val root = fs.getRootFolder()
-        val dir1 = fs.mkdir("one", root)
-        val dir2 = fs.mkdir("two", root)
+        fs.mkdir("one", root)
+        fs.mkdir("two", root)
         val dir3 = fs.mkdir("three", root)
         fs.delete(dir3, root)
         assertEquals(fs.ls(root).map { it.first }, listOf(".", "..", "one", "two"))
-    }
-
-    @Test
-    fun appendToFile() {
-        val fs = prepareFs("appendToFile")
-        val file = fs.create("file", fs.getRootFolder())
-        fs.append(file, ByteBuffer.wrap("Hello ".toByteArray()))
-        fs.append(file, ByteBuffer.wrap("world!".toByteArray()))
-        assertEquals(String(fs.readToEnd(file)), "Hello world!")
-        fs.write(file, ByteBuffer.wrap("!".toByteArray()), 5, 1)
-        assertEquals(String(fs.readToEnd(file)), "Hello!world!")
     }
 }
