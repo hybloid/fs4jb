@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 
 class FileSystemTest {
     private fun prepareFs(name : String, blocks : Int = 10) : FileSystem {
-        val disk = Disk(Paths.get("build", "out", "{$name}.jb"), blocks)
+        val disk = Disk(Paths.get("build", "out", "$name.jb"), blocks)
         val fs = FileSystem(disk)
         fs.format()
         fs.debug()
@@ -159,7 +159,7 @@ class FileSystemTest {
         val inode = fs.createINode()
         val array = ByteArray(5)
         for (i in 0 until 5) {
-            array[i] = i.toByte()
+            array[i] = (i + 1).toByte()
         }
         val wrappedArray = ByteBuffer.wrap(array)
         val size = wrappedArray.limit()
@@ -180,7 +180,7 @@ class FileSystemTest {
         fs.read(inode3, readBuffer, 0, 3)
         val expectedArray = ByteArray(3)
         for (i in 0 until 3) {
-            expectedArray[i] = i.toByte()
+            expectedArray[i] = (i + 1).toByte()
         }
         val wrappedExpectedArray = ByteBuffer.wrap(expectedArray)
         assertEquals(readBuffer, wrappedExpectedArray)
