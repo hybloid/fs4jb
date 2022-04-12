@@ -77,8 +77,7 @@ class FileSystem(val disk: Disk) {
         buffer.clear()
 
         val buf = Constants.ZERO_BLOCK()
-        // TODO: minimize calls to this, this is currently a bad hack
-        if (inode.indirect != 0 && inode.links[Constants.LINKS_IN_INODE] == 0) {
+        if (inode.indirectLoadNeeded()) {
             disk.read(inode.indirect, buf)
             inode.readIndirect(buf)
         }
@@ -120,8 +119,7 @@ class FileSystem(val disk: Disk) {
         assert(end < Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE)
         assert(buffer.capacity() >= length)
         var buf = Constants.ZERO_BLOCK()
-        // TODO: minimize calls to this, this is currently a bad hack
-        if (inode.indirect != 0 && inode.links[Constants.LINKS_IN_INODE] == 0) {
+        if (inode.indirectLoadNeeded()) {
             disk.read(inode.indirect, buf)
             inode.readIndirect(buf)
         }
@@ -181,15 +179,58 @@ class FileSystem(val disk: Disk) {
             inodeUpdateNeeded = true
         }
         if (inodeUpdateNeeded) {
-            disk.read(INode.getBlockNumber(inode.number), buf)
-            inode.write(buf)
-            disk.write(INode.getBlockNumber(inode.number), buf)
-            if (inode.indirect != 0) {
-                inode.writeIndirect(buf)
-                disk.write(inode.indirect, buf)
-            }
+            writeInodeToDisk(inode, buf)
         }
         return length
+    }
+
+    fun truncate(inode : INode, offset : Int) {
+        assert(offset >= 0)
+        assert(offset < inode.size)
+        val buf = Constants.ZERO_BLOCK()
+        if (inode.indirectLoadNeeded()) {
+            disk.read(inode.indirect, buf)
+            inode.readIndirect(buf)
+        }
+        val blockId = offset / Constants.BLOCK_SIZE
+        val lastBlockId = inode.size / Constants.BLOCK_SIZE
+        for (i in lastBlockId downTo blockId + 1) {
+            if (inode.links[i] != 0) {
+                freeDataBlocks.addFirst(inode.links[i])
+                inode.links[i] = 0
+            }
+        }
+        if (blockId < Constants.LINKS_IN_INODE && inode.indirect != 0) {
+            freeDataBlocks.addFirst(inode.indirect)
+            inode.indirect = 0
+        }
+        if (offset == 0) {
+            // special case, remove all blocks
+            if (inode.links[0] != 0) {
+                freeDataBlocks.addFirst(inode.links[0])
+                inode.links[0] = 0
+            }
+        } else {
+            val positionInLastBlock = offset.mod(Constants.BLOCK_SIZE)
+            disk.read(inode.links[blockId], buf)
+            buf.position(positionInLastBlock)
+            for (i in positionInLastBlock until Constants.BLOCK_SIZE) {
+                buf.put(0)
+            }
+            disk.write(inode.links[blockId], buf)
+        }
+        inode.size = offset
+        writeInodeToDisk(inode, buf)
+    }
+
+    private fun writeInodeToDisk(inode: INode, buf : ByteBuffer) {
+        disk.read(INode.getBlockNumber(inode.number), buf)
+        inode.write(buf)
+        disk.write(INode.getBlockNumber(inode.number), buf)
+        if (inode.indirect != 0) {
+            inode.writeIndirect(buf)
+            disk.write(inode.indirect, buf)
+        }
     }
 
     private fun fsck() {
@@ -206,6 +247,7 @@ class FileSystem(val disk: Disk) {
                     if (iNode.indirect != 0) {
                         disk.read(iNode.indirect, indirectBuf)
                         iNode.readIndirect(indirectBuf)
+                        busyBlocks.add(iNode.indirect)
                     }
                     for (k in 0 .. Constants.INODE_TOTAL_LINKS_COUNT) {
                         if (iNode.links[k] != 0) {
