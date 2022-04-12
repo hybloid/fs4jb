@@ -11,6 +11,8 @@ data class INode (val number : Int,
                   var links : Array<Int>,
                   var indirect : Int) {
 
+    fun indirectLoadNeeded() = indirect != 0 && links[Constants.LINKS_IN_INODE] == 0 // Could be a state
+
     fun readIndirect(buffer: ByteBuffer) {
         assert(indirect != 0)
         // TODO : should we stop loading on 0? or better set 0
