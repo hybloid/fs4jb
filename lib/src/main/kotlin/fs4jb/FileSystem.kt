@@ -13,13 +13,9 @@ class FileSystem(private val disk: Disk) {
 
     fun freeStat() = Pair(freeInodes.size, freeDataBlocks.size) // TODO : Convert to normal stats
 
-    fun debug() {
-        disk.open()
-        val block = SuperBlock.read(disk)
-        disk.close()
-        logger.info { block }
-    }
-
+    /**
+     * FS Main routines
+     */
     // FIXME : Test only argument, example of bad design. Remove and adjust all failing tests
     fun format(skipRootCreation: Boolean = false) {
         sb = SuperBlock(disk.nBlocks)
@@ -42,6 +38,50 @@ class FileSystem(private val disk: Disk) {
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
     }
 
+    fun mount() {
+        disk.open()
+        sb = SuperBlock.read(disk)
+        assert(sb.magicNumber == Constants.MAGIC) // TODO : add hard check
+        logger.info("Disk mounted")
+        fsck()
+        logger.info("FSCK completed")
+    }
+
+    fun umount() {
+        disk.close()
+        logger.info("Disk unmounted")
+        freeInodes.clear()
+        freeDataBlocks.clear()
+    }
+
+    /**
+     * FS i-node routines
+     */
+    fun createINode(): INode {
+        assert(freeInodes.size > 0)
+        val buf = Constants.zeroBlock()
+        val freeInodeNumber = freeInodes.removeFirst()
+        disk.read(INode.getBlockNumber(freeInodeNumber), buf)
+        val inode = INode.read(freeInodeNumber, buf)
+        inode.valid = true
+        // TODO : let's try to postpone writing this inode
+        return inode
+    }
+
+    fun retrieveINode(n: Int): INode {
+        val buf = Constants.zeroBlock()
+        disk.read(INode.getBlockNumber(n), buf)
+        val inode = INode.read(n, buf)
+        if (inode.indirect != 0) {
+            disk.read(inode.indirect, buf)
+            inode.readIndirect(buf)
+        }
+        return inode
+    }
+
+    /**
+     * FS file/directory ops
+     */
     fun getRootFolder() = retrieveINode(0)
 
     fun createFile(name: String, target: INode): INode {
@@ -146,45 +186,9 @@ class FileSystem(private val disk: Disk) {
         return list
     }
 
-    fun mount() {
-        disk.open()
-        sb = SuperBlock.read(disk)
-        assert(sb.magicNumber == Constants.MAGIC) // TODO : add hard check
-        logger.info("Disk mounted")
-        fsck()
-        logger.info("FSCK completed")
-    }
-
-    fun umount() {
-        disk.close()
-        logger.info("Disk unmounted")
-        freeInodes.clear()
-        freeDataBlocks.clear()
-    }
-
-    fun createINode(): INode {
-        assert(freeInodes.size > 0)
-        val buf = Constants.zeroBlock()
-        val freeInodeNumber = freeInodes.removeFirst()
-        disk.read(INode.getBlockNumber(freeInodeNumber), buf)
-        val inode = INode.read(freeInodeNumber, buf)
-        inode.valid = true
-        // TODO : let's try to postpone writing this inode
-        return inode
-    }
-
-    fun retrieveINode(n: Int): INode {
-        val buf = Constants.zeroBlock()
-        disk.read(INode.getBlockNumber(n), buf)
-        val inode = INode.read(n, buf)
-        if (inode.indirect != 0) {
-            disk.read(inode.indirect, buf)
-            inode.readIndirect(buf)
-        }
-        return inode
-    }
-
-    // TODO : get rid of INode, use number
+    /**
+     * FS low level read-write routines
+     */
     fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         val end = start + length - 1
         assert(start >= 0)
@@ -229,7 +233,6 @@ class FileSystem(private val disk: Disk) {
         return length
     }
 
-    // TODO : get rid of INode, use number
     fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         val end = start + length - 1
         assert(start >= 0)
@@ -345,6 +348,9 @@ class FileSystem(private val disk: Disk) {
         writeInodeToDisk(inode, buf)
     }
 
+    /**
+     * FS Misc routines
+     */
     private fun writeInodeToDisk(inode: INode, buf: ByteBuffer) {
         disk.read(INode.getBlockNumber(inode.number), buf)
         inode.write(buf)
