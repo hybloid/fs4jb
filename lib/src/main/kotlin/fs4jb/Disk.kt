@@ -49,10 +49,7 @@ class Disk(private val path: Path, val nBlocks: Int) {
         return count
     }
 
-    private fun blockOffset(blockNum: Int): Long =
-        Constants.SUPERBLOCK_SIZE + blockNum * Constants.BLOCK_SIZE_L
-
-    private fun channelRead(buffer: ByteBuffer, offset: Long): Int {
+    fun channelRead(buffer: ByteBuffer, offset: Long): Int {
         buffer.clear()
         Metrics.incRead()
         channel.position(offset)
@@ -60,6 +57,9 @@ class Disk(private val path: Path, val nBlocks: Int) {
         buffer.flip()
         return count
     }
+
+    private fun blockOffset(blockNum: Int): Long =
+        Constants.SUPERBLOCK_SIZE + blockNum * Constants.BLOCK_SIZE_L
 
     private fun channelWrite(buffer: ByteBuffer, offset: Long): Int {
         buffer.rewind()
