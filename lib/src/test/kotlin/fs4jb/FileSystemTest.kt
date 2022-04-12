@@ -13,7 +13,6 @@ class FileSystemTest {
         val disk = Disk(Paths.get("build", "out", "$name.jb"), blocks)
         val fs = FileSystem(disk)
         fs.format(skipRootCreation = true)
-        fs.debug()
         fs.mount()
         return fs
     }
