@@ -75,7 +75,7 @@ data class INode(
             val mask = buffer.int
             val valid = mask.check(0)
             val isDir = mask.check(1)
-            val links = Array(Constants.INODE_TOTAL_LINKS_COUNT) { 0 }
+            val links = Constants.LINKS_ARRAY.copyOf()
 
             return if (valid) {
                 val size = buffer.int
@@ -87,6 +87,11 @@ data class INode(
             } else {
                 INode(number, false, isDir, 0, links, 0)
             }
+        }
+
+        fun isValid(number: Int, buffer: ByteBuffer): Boolean {
+            val mask = buffer.getInt(getPositionInBlock(number))
+            return mask.check(0)
         }
 
         fun getBlockNumber(number: Int) = number / Constants.INODES_PER_BLOCK

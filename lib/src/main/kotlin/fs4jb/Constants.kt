@@ -18,6 +18,7 @@ class Constants {
         const val LINKS_IN_INODE = 5
         const val INODE_TOTAL_LINKS_COUNT = LINKS_IN_INODE + BLOCK_SIZE / Int.SIZE_BYTES
         val INODES_PER_BLOCK = ceil(BLOCK_SIZE / INODE_SIZE.toDouble()).toInt()
+        val LINKS_ARRAY = Array(INODE_TOTAL_LINKS_COUNT) { 0 }
 
         const val DENTRY_SIZE = 128
         const val FILENAME_SIZE = DENTRY_SIZE - Int.SIZE_BYTES
