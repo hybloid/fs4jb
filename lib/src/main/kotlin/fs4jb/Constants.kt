@@ -21,7 +21,7 @@ class Constants {
 
         const val DENTRY_SIZE = 128
         const val FILENAME_SIZE = DENTRY_SIZE - Int.SIZE_BYTES
-        const val DELIMITER = "/"
+        const val SEPARATOR = "/"
         val CHARSET: Charset = Charset.forName("ASCII")
 
         fun zeroBlock(): ByteBuffer {
