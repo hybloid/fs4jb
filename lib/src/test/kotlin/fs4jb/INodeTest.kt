@@ -9,7 +9,7 @@ class INodeTest {
     @Test
     fun writeAndReadINodes() {
         val disk = Disk(Paths.get("build", "out", "inode.jb"), 2)
-        val i1 = INode(0, true, false, 1, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 123 }, 1)
+        val i1 = INode(0, valid = true, isDir = false, 1, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 123 }, 1)
         val buf = Constants.ZERO_BLOCK()
         disk.open(true)
         i1.write(buf)
@@ -30,7 +30,7 @@ class INodeTest {
     @Test
     fun writeAndReadInvalidInode() {
         val disk = Disk(Paths.get("build", "out", "inode.jb"), 2)
-        val i1 = INode(0, false, true, 1, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 123 }, 1)
+        val i1 = INode(0, valid = false, isDir = true, 1, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 123 }, 1)
         val buf = Constants.ZERO_BLOCK()
         disk.open(true)
         i1.write(buf)
@@ -46,6 +46,6 @@ class INodeTest {
         // i2.readIndirect(buf) read indirect will fail the assertion
         disk.close()
         assertNotEquals(i1, i2)
-        assertEquals(INode(0, false, false, 0, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 0 }, 0), i2)
+        assertEquals(INode(0, valid = false, isDir = false, 0, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 0 }, 0), i2)
     }
 }

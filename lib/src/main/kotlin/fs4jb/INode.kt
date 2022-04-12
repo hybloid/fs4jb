@@ -6,7 +6,7 @@ import java.nio.ByteBuffer
 
 data class INode (val number : Int,
                   var valid : Boolean,
-                  val isDir : Boolean,
+                  var isDir : Boolean,
                   var size : Int,
                   var links : Array<Int>,
                   var indirect : Int) {

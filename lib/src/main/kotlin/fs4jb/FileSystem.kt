@@ -2,6 +2,8 @@ package fs4jb
 
 import mu.KotlinLogging
 import java.nio.ByteBuffer
+import kotlin.collections.ArrayDeque
+
 
 class FileSystem(val disk: Disk) {
     lateinit var sb: SuperBlock
@@ -18,16 +20,146 @@ class FileSystem(val disk: Disk) {
         logger.info { block }
     }
 
-    fun format() {
-        val block = SuperBlock(disk.nBlocks)
+    // FIXME : Test only argument, example of bad design. Remove and adjust all failing tests
+    fun format(skipRootCreation : Boolean = false) {
+        sb = SuperBlock(disk.nBlocks)
         disk.open(true)
-        block.write(disk)
+        sb.write(disk)
         // reserve data for inodes
-        for (i in 0 until block.inodeBlocks) {
+        for (i in 0 until sb.inodeBlocks) {
             disk.write(i, Constants.ZERO_BLOCK())
+        }
+        if (!skipRootCreation) {
+            for (i in 0 until sb.inodeBlocks * Constants.INODES_PER_BLOCK) {
+                freeInodes.addLast(i)
+            }
+            for (i in sb.inodeBlocks until sb.blocks) {
+                freeDataBlocks.addLast(i)
+            }
+            createDir(Constants.DELIMITER)
         }
         disk.close()
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
+    }
+
+    fun getRootFolder() = retrieveINode(0)
+
+    fun createFile(name : String, target : INode) : INode {
+        val inode = createINode()
+        writeInodeToDisk(inode, Constants.ZERO_BLOCK())
+        addToDir(name, inode, target)
+        return inode
+    }
+
+    fun createDir(name : String, target : INode? = null) : INode {
+        val inode = createINode()
+        inode.isDir = true
+        val buffer = ByteBuffer.allocate(Constants.DENTRY_SIZE * 2)
+        buffer.put(".".toByteArray())
+        buffer.position(Constants.FILENAME_SIZE)
+        buffer.putInt(inode.number)
+        buffer.put("..".toByteArray())
+        buffer.position(Constants.DENTRY_SIZE + Constants.FILENAME_SIZE)
+        if (target == null) {
+            buffer.putInt(inode.number)
+        } else {
+            buffer.putInt(target.number)
+        }
+        write(inode, buffer, 0, buffer.limit())
+        if (target != null) {
+            addToDir(name, inode, target)
+        }
+        return inode
+    }
+
+    fun addToDir(name : String, source: INode, target : INode) {
+        // FIXME: we do not check name duplicates here
+        // FIXME: we do not check . and .. here
+        assert(!name.contains(Constants.DELIMITER))
+        assert(name.length <= Constants.FILENAME_SIZE)
+        val bufToAppend = ByteBuffer.allocate(Constants.DENTRY_SIZE)
+        bufToAppend.put(wrapDentryName(name))
+        bufToAppend.putInt(source.number)
+        write(target, bufToAppend, target.size, bufToAppend.limit())
+    }
+
+    fun removeFromDir(source: INode, target : INode) {
+        // FIXME: we do not check . and .. here
+        assert(target.size.mod(Constants.DENTRY_SIZE) == 0)
+        val dentries = target.size / Constants.DENTRY_SIZE
+        assert(dentries >= 2)
+        val targetBuf = ByteBuffer.allocate(target.size) // Expensive
+        read(target, targetBuf, 0, target.size)
+        for (i in 0 until dentries) {
+            val num = targetBuf.getInt(i * Constants.DENTRY_SIZE + Constants.FILENAME_SIZE)
+            if (num == source.number) {
+                if (i == dentries - 1) {
+                    // corner case
+                    truncate(target, i * Constants.DENTRY_SIZE)
+                    return
+                } else {
+                    val restBuf = ByteBuffer.allocate((dentries - i) * Constants.DENTRY_SIZE)
+                    targetBuf.position((i + 1) * Constants.DENTRY_SIZE)
+                    restBuf.put(targetBuf)
+                    truncate(target, i * Constants.DENTRY_SIZE)
+                    write(target, restBuf, i * Constants.DENTRY_SIZE, restBuf.limit())
+                    return
+                }
+            }
+        }
+        assert(false) // we should never reach this point
+    }
+
+    fun findInDir(name : String, target: INode) : INode? {
+        assert(target.size.mod(Constants.DENTRY_SIZE) == 0)
+        val dentries = target.size / Constants.DENTRY_SIZE
+        assert(dentries >= 2)
+        val targetBuf = ByteBuffer.allocate(target.size) // Expensive
+        read(target, targetBuf, 0, target.size)
+        val bufferForNextName = ByteArray(Constants.FILENAME_SIZE)
+        val bufWithNameToCompare = wrapDentryName(name)
+        val arrayWithTargetName = bufWithNameToCompare.array()
+        for (i in 0 until dentries) {
+            targetBuf.position(i * Constants.DENTRY_SIZE)
+            targetBuf.get(bufferForNextName)
+            if (arrayWithTargetName.contentEquals(bufferForNextName)) {
+                val num = targetBuf.getInt(i * Constants.DENTRY_SIZE + Constants.FILENAME_SIZE)
+                return retrieveINode(num)
+            }
+        }
+        return null
+    }
+
+    fun listDir(target: INode) : List<Pair<String, Int>> {
+        assert(target.size.mod(Constants.DENTRY_SIZE) == 0)
+        val dentries = target.size / Constants.DENTRY_SIZE
+        assert(dentries >= 2)
+        val list = mutableListOf<Pair<String, Int>>()
+        val targetBuf = ByteBuffer.allocate(target.size) // Expensive
+        read(target, targetBuf, 0, target.size)
+        val bufferForName = ByteArray(Constants.FILENAME_SIZE)
+        for (i in 0 until dentries) {
+            targetBuf.get(bufferForName)
+            val name = String(trim(bufferForName), Constants.CHARSET)
+            val num = targetBuf.int
+            list.add(Pair(name, num))
+        }
+        return list
+    }
+
+    private fun wrapDentryName(name : String) : ByteBuffer {
+        val bufWithNameToCompare = ByteBuffer.allocate(Constants.FILENAME_SIZE)
+        bufWithNameToCompare.put(name.toByteArray(Constants.CHARSET))
+        bufWithNameToCompare.rewind()
+        return bufWithNameToCompare
+    }
+
+    private fun trim(bytes: ByteArray): ByteArray {
+        var i = bytes.size - 1
+        while (i >= 0 && bytes[i].toInt() == 0) {
+            --i
+        }
+        return bytes.copyOf(i + 1)
     }
 
     fun mount() {
@@ -78,6 +210,7 @@ class FileSystem(val disk: Disk) {
 
         val buf = Constants.ZERO_BLOCK()
         if (inode.indirectLoadNeeded()) {
+            // dummy safety, already done by retrieve node
             disk.read(inode.indirect, buf)
             inode.readIndirect(buf)
         }
@@ -120,6 +253,7 @@ class FileSystem(val disk: Disk) {
         assert(buffer.capacity() >= length)
         var buf = Constants.ZERO_BLOCK()
         if (inode.indirectLoadNeeded()) {
+            // dummy safety, already done by retrieve node
             disk.read(inode.indirect, buf)
             inode.readIndirect(buf)
         }
@@ -148,6 +282,7 @@ class FileSystem(val disk: Disk) {
         }
         disk.read(inode.links[startBlockId], buf)
         buf.position(startBlockPosition)
+        buffer.rewind()
         var written = 0
         if (startBlockId == endBlockId) {
             // special case
@@ -189,6 +324,7 @@ class FileSystem(val disk: Disk) {
         assert(offset < inode.size)
         val buf = Constants.ZERO_BLOCK()
         if (inode.indirectLoadNeeded()) {
+            // dummy safety, already done by retrieve node
             disk.read(inode.indirect, buf)
             inode.readIndirect(buf)
         }

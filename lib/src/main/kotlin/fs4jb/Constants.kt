@@ -1,6 +1,7 @@
 package fs4jb
 
 import java.nio.ByteBuffer
+import java.nio.charset.Charset
 import kotlin.math.ceil
 
 class Constants {
@@ -17,6 +18,11 @@ class Constants {
         const val LINKS_IN_INODE = 5
         const val INODE_TOTAL_LINKS_COUNT = LINKS_IN_INODE + BLOCK_SIZE / Int.SIZE_BYTES
         val INODES_PER_BLOCK = ceil(BLOCK_SIZE / INODE_SIZE.toDouble()).toInt()
+
+        const val DENTRY_SIZE = 128
+        const val FILENAME_SIZE = DENTRY_SIZE - Int.SIZE_BYTES
+        const val DELIMITER = "/"
+        val CHARSET: Charset = Charset.forName("ASCII")
 
         fun ZERO_BLOCK() : ByteBuffer {
             val buf = ByteBuffer.allocate(BLOCK_SIZE)
