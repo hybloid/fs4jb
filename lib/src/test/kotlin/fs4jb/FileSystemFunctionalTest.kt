@@ -40,7 +40,7 @@ class FileSystemFunctionalTest {
         val newListOfFiles = copyFilesToFS(rootPath, fs, newRoot)
         logStats("Reinsert files", fs.fstat())
         fs.umount()
-        logStats("LRU to disk", fs.fstat())
+        logStats("LRU to disk", fs.fstat(), hideUsedStaces = true)
         fs.mount()
         for (i in newListOfFiles.indices) {
             val osFile = newListOfFiles[i]
@@ -54,17 +54,19 @@ class FileSystemFunctionalTest {
         fs.umount()
     }
 
-    private fun logStats(stage: String, stats: FileSystem.FileSystemStat) {
+    private fun logStats(stage: String, stats: FileSystem.FileSystemStat, hideUsedStaces: Boolean = false) {
         println("=".repeat(20))
         println("Stage      : $stage")
         println("Write speed: ${Metrics.writeSpeed()} kb/sec")
         println("Read speed : ${Metrics.readSpeed()} kb/sec")
         println("Raw writes : ${Metrics.lowLevelWrites}")
         println("Raw reads  : ${Metrics.lowLevelReads}")
-        println("Used inodes: ${stats.totalINodes - stats.freeInodes}(${stats.totalINodes})")
-        println("Used blocks: ${stats.totalDataBlocks - stats.freeDataBlocks}(${stats.totalDataBlocks})")
-        println("Used size  : ${(stats.totalDataBlocks - stats.freeDataBlocks) * Constants.BLOCK_SIZE / 1024} kb")
-        println("Free size  : ${(stats.freeDataBlocks) * Constants.BLOCK_SIZE / 1024} kb")
+        if (!hideUsedStaces) {
+            println("Used inodes: ${stats.totalINodes - stats.freeInodes}(${stats.totalINodes})")
+            println("Used blocks: ${stats.totalDataBlocks - stats.freeDataBlocks}(${stats.totalDataBlocks})")
+            println("Used size  : ${(stats.totalDataBlocks - stats.freeDataBlocks) * Constants.BLOCK_SIZE / 1024} kb")
+            println("Free size  : ${(stats.freeDataBlocks) * Constants.BLOCK_SIZE / 1024} kb")
+        }
         println("=".repeat(20))
     }
 
