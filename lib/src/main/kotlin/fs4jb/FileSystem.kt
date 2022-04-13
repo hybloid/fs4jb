@@ -114,6 +114,7 @@ class FileSystem(private val disk: Disk) {
         entry.valid = false // state will be written during truncate
         truncate(entry, 0)
         deleteFromDir(entry, folder)
+        freeInodes.addFirst(entry.number)
     }
 
     fun move(entry: INode, srcFolder: INode, dstFolder: INode) {
