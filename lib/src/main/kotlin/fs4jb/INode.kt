@@ -15,7 +15,6 @@ data class INode(
 
     fun readIndirect(buffer: ByteBuffer) {
         if (indirect == 0) throw FSIllegalStateException("Illegal state, operation not possible")
-        // TODO : should we stop loading on 0? or better set 0
         for (i in Constants.LINKS_IN_INODE until Constants.INODE_TOTAL_LINKS_COUNT) {
             links[i] = buffer.int
         }
@@ -24,7 +23,6 @@ data class INode(
     fun writeIndirect(buffer: ByteBuffer) {
         if (indirect == 0) throw FSIllegalStateException("Illegal state, operation not possible")
         buffer.clear()
-        // TODO : should we stop loading on 0? or better set 0
         for (i in Constants.LINKS_IN_INODE until Constants.INODE_TOTAL_LINKS_COUNT) {
             buffer.putInt(links[i])
         }
@@ -38,7 +36,6 @@ data class INode(
             buffer.putInt(links[i])
         }
         buffer.putInt(indirect)
-        // TODO : handle indirect
     }
 
     private fun getMask() = 0.set(0, valid).set(1, isDir && valid)
