@@ -12,21 +12,22 @@ class FileSystemRWTest {
     private fun prepareFs(name: String, blocks: Int = 10): FileSystem {
         val disk = Disk(Paths.get("build", "out", "$name.jb"), blocks)
         val fs = FileSystem(disk)
-        fs.format(skipRootCreation = true)
+        fs.format()
         fs.mount()
         return fs
     }
 
     @Test
-    fun formatFsWithoutRootINode() {
+    fun formatFs() {
         val blocks = 10
         val fs = prepareFs("formatFs", blocks)
         val blockCount = ceil(blocks / Constants.INODE_PROC).toInt()
         assertEquals(fs.sb.blocks, blocks)
         assertEquals(fs.sb.inodeBlocks, blockCount)
         assertEquals(fs.sb.inodes, blockCount * Constants.INODES_PER_BLOCK)
-        assertEquals(fs.freeStat().first, fs.sb.inodes)
-        assertEquals(fs.freeStat().second, fs.sb.blocks - fs.sb.inodeBlocks)
+        // -1 due to root folder
+        assertEquals(fs.fstat().freeInodes, fs.sb.inodes - 1)
+        assertEquals(fs.fstat().freeDataBlocks, fs.sb.blocks - fs.sb.inodeBlocks - 1)
         fs.umount()
     }
 
@@ -105,8 +106,8 @@ class FileSystemRWTest {
     @Test
     fun truncateToEmpty() {
         val fs = prepareFs("truncateFull")
-        val inodeCount = fs.freeStat().first
-        val dataBlockCount = fs.freeStat().second
+        val inodeCount = fs.fstat().freeInodes
+        val dataBlockCount = fs.fstat().freeDataBlocks
         val inode = fs.createINode()
         val array = ByteArray(Constants.BLOCK_SIZE * 6) { 123 }
         val wrappedArray = ByteBuffer.wrap(array)
@@ -122,8 +123,8 @@ class FileSystemRWTest {
         assertEquals(inode2.size, 0)
         assertEquals(inode2.indirect, 0)
         assertTrue(inode2.links.all { it == 0 })
-        assertEquals(fs.freeStat().first, inodeCount - 1)
-        assertEquals(fs.freeStat().second, dataBlockCount)
+        assertEquals(fs.fstat().freeInodes, inodeCount - 1)
+        assertEquals(fs.fstat().freeDataBlocks, dataBlockCount)
     }
 
     @Test
@@ -134,8 +135,8 @@ class FileSystemRWTest {
         val wrappedArray = ByteBuffer.wrap(array)
         val size = wrappedArray.limit()
         fs.write(inode, wrappedArray, Constants.BLOCK_SIZE - 10, size)
-        val inodeCount = fs.freeStat().first
-        val dataBlockCount = fs.freeStat().second
+        val inodeCount = fs.fstat().freeInodes
+        val dataBlockCount = fs.fstat().freeDataBlocks
         fs.umount()
         wrappedArray.rewind()
         fs.mount()
@@ -146,8 +147,8 @@ class FileSystemRWTest {
         assertEquals(inode2, inode3)
         assertEquals(inode2.size, newSize)
         assertTrue(inode2.indirect != 0)
-        assertEquals(fs.freeStat().first, inodeCount)
-        assertEquals(fs.freeStat().second, dataBlockCount + 1)
+        assertEquals(fs.fstat().freeInodes, inodeCount)
+        assertEquals(fs.fstat().freeDataBlocks, dataBlockCount + 1)
     }
 
     @Test
@@ -161,8 +162,8 @@ class FileSystemRWTest {
         val wrappedArray = ByteBuffer.wrap(array)
         val size = wrappedArray.limit()
         fs.write(inode, wrappedArray, 0, size)
-        val inodeCount = fs.freeStat().first
-        val dataBlockCount = fs.freeStat().second
+        val inodeCount = fs.fstat().freeInodes
+        val dataBlockCount = fs.fstat().freeDataBlocks
         fs.umount()
         fs.mount()
         val inode2 = fs.retrieveINode(inode.number)
@@ -181,7 +182,7 @@ class FileSystemRWTest {
         }
         val wrappedExpectedArray = ByteBuffer.wrap(expectedArray)
         assertEquals(readBuffer, wrappedExpectedArray)
-        assertEquals(fs.freeStat().first, inodeCount)
-        assertEquals(fs.freeStat().second, dataBlockCount)
+        assertEquals(fs.fstat().freeInodes, inodeCount)
+        assertEquals(fs.fstat().freeDataBlocks, dataBlockCount)
     }
 }

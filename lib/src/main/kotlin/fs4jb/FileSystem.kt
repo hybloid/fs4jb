@@ -17,8 +17,7 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS Main routines
      */
-    // FIXME : Test only argument, example of bad design. Remove and adjust all failing tests
-    fun format(skipRootCreation: Boolean = false) {
+    fun format() {
         sb = SuperBlock(disk.nBlocks)
         disk.open(true)
         sb.write(disk)
@@ -26,15 +25,13 @@ class FileSystem(private val disk: Disk) {
         for (i in 0 until sb.inodeBlocks) {
             disk.write(i, Constants.zeroBlock())
         }
-        if (!skipRootCreation) {
-            for (i in 0 until sb.inodeBlocks * Constants.INODES_PER_BLOCK) {
-                freeInodes.addLast(i)
-            }
-            for (i in sb.inodeBlocks until sb.blocks) {
-                freeDataBlocks.addLast(i)
-            }
-            mkdir(Constants.SEPARATOR)
+        for (i in 0 until sb.inodeBlocks * Constants.INODES_PER_BLOCK) {
+            freeInodes.addLast(i)
         }
+        for (i in sb.inodeBlocks until sb.blocks) {
+            freeDataBlocks.addLast(i)
+        }
+        mkdir(Constants.SEPARATOR)
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
         umount()
     }
@@ -70,7 +67,6 @@ class FileSystem(private val disk: Disk) {
         disk.read(INode.getBlockNumber(freeInodeNumber), buf)
         val inode = INode.read(freeInodeNumber, buf)
         inode.valid = true
-        // TODO : let's try to postpone writing this inode
         return inode
     }
 
@@ -418,9 +414,7 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS Misc routines
      */
-    fun freeStat() = Pair(freeInodes.size, freeDataBlocks.size) // TODO : Convert to normal stats
     fun fstat() = FileSystemStat(freeInodes.size, sb.inodes, freeDataBlocks.size, sb.blocks - sb.inodeBlocks)
-    fun path2fsPath(path: String) = "${Constants.SEPARATOR}${path.replace(File.separator, Constants.SEPARATOR)}"
 
     private fun writeInodeToDisk(inode: INode, buf: ByteBuffer) {
         disk.read(INode.getBlockNumber(inode.number), buf)
@@ -448,7 +442,6 @@ class FileSystem(private val disk: Disk) {
     }
 
     private fun fsck() {
-        // TODO : introduce states and check the state of FS
         val buf = Constants.zeroBlock()
         val inodeBlocksBuf = ByteBuffer.allocate(sb.inodeBlocks * Constants.BLOCK_SIZE)
         val indirectBuf = Constants.zeroBlock()
@@ -483,9 +476,17 @@ class FileSystem(private val disk: Disk) {
                 freeDataBlocks.addLast(i)
             }
         }
-        val a = freeDataBlocks
     }
 
-    data class FileSystemStat(val freeInodes: Int, val totalINodes: Int, val freeDataBlocks: Int, val totalDataBlocks: Int)
+    companion object {
+        fun path2fsPath(path: String) = "${Constants.SEPARATOR}${path.replace(File.separator, Constants.SEPARATOR)}"
+    }
+
+    data class FileSystemStat(
+        val freeInodes: Int,
+        val totalINodes: Int,
+        val freeDataBlocks: Int,
+        val totalDataBlocks: Int
+    )
 }
 
