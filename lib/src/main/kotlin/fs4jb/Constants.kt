@@ -8,6 +8,7 @@ class Constants {
     companion object {
         const val BLOCK_SIZE = 4096
         const val BLOCK_SIZE_L = BLOCK_SIZE.toLong()
+        const val LRU_CACHE_LIMIT = 1000
 
         const val MAGIC = 51966 // CAFE
         const val SUPERBLOCK_BLOCK_OFFSET = 0L

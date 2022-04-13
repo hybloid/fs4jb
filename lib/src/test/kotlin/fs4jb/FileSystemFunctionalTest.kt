@@ -39,7 +39,9 @@ class FileSystemFunctionalTest {
         val newRoot = fs.mkdir(newPrefix, fs.getRootFolder())
         val newListOfFiles = copyFilesToFS(rootPath, fs, newRoot)
         logStats("Reinsert files", fs.fstat())
-        fs.remount()
+        fs.umount()
+        logStats("LRU to disk", fs.fstat())
+        fs.mount()
         for (i in newListOfFiles.indices) {
             val osFile = newListOfFiles[i]
             val osPath = Paths.get(rootPath.toString(), osFile).toAbsolutePath()
