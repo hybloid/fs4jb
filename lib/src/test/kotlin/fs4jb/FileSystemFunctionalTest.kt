@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class FileSystemFunctionalTest {
     @Test
     fun functionalTestJB() {
-        val disk = Disk(Paths.get("build", "out", "jb.jb"), 1_000)
+        val disk = Disk(Paths.get("build", "jb.jb"), 1_000)
         val fs = FileSystem(disk)
         fs.format()
         fs.mount()

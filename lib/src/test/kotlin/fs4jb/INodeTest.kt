@@ -8,7 +8,7 @@ import kotlin.test.assertNotEquals
 class INodeTest {
     @Test
     fun writeAndReadINodes() {
-        val disk = Disk(Paths.get("build", "out", "inode.jb"), 2)
+        val disk = Disk(Paths.get("build", "inode.jb"), 2)
         val i1 = INode(0, valid = true, isDir = false, 1, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 123 }, 1)
         val buf = Constants.zeroBlock()
         disk.open(true)
@@ -29,7 +29,7 @@ class INodeTest {
 
     @Test
     fun writeAndReadInvalidInode() {
-        val disk = Disk(Paths.get("build", "out", "inode.jb"), 2)
+        val disk = Disk(Paths.get("build", "inode.jb"), 2)
         val i1 = INode(0, valid = false, isDir = true, 1, Array(Constants.INODE_TOTAL_LINKS_COUNT) { 123 }, 1)
         val buf = Constants.zeroBlock()
         disk.open(true)
