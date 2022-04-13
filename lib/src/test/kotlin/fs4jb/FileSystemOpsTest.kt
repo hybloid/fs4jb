@@ -175,9 +175,9 @@ class FileSystemOpsTest {
         val windowsRel = "my\\folder\\file"
         val linuxRel = "my/folder/file"
         val empty = ""
-        val fsFromWindows = FileSystem.path2fsPath(windowsRel)
-        val fsFromLinux = FileSystem.path2fsPath(linuxRel)
-        val fsFromEmpty = FileSystem.path2fsPath(empty)
+        val fsFromWindows = FileSystem.relPath2fsPath(windowsRel)
+        val fsFromLinux = FileSystem.relPath2fsPath(linuxRel)
+        val fsFromEmpty = FileSystem.relPath2fsPath(empty)
         assertEquals(fsFromWindows, fsFromLinux)
         assertEquals(fsFromWindows, "${Constants.SEPARATOR}my${Constants.SEPARATOR}folder${Constants.SEPARATOR}file")
         assertEquals(fsFromEmpty, "${Constants.SEPARATOR}")

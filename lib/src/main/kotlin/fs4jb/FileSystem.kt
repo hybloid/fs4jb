@@ -17,6 +17,10 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS Main routines
      */
+
+    /**
+     * Formats the drive. If it exists, the content will be overwritten
+     */
     fun format() {
         sb = SuperBlock(disk.nBlocks)
         disk.open(true)
@@ -36,6 +40,9 @@ class FileSystem(private val disk: Disk) {
         umount()
     }
 
+    /**
+     * Mounts the drive and runs the routine to locate free blocks/inodes
+     */
     fun mount() {
         disk.open()
         sb = SuperBlock.read(disk)
@@ -45,6 +52,9 @@ class FileSystem(private val disk: Disk) {
         logger.info("FSCK completed")
     }
 
+    /**
+     * Umounts the drive and dumps the content to disk
+     */
     fun umount() {
         disk.close()
         logger.info("Disk unmounted")
@@ -52,6 +62,9 @@ class FileSystem(private val disk: Disk) {
         freeDataBlocks.clear()
     }
 
+    /**
+     * Umounts and mounts the drive back
+     */
     fun remount() {
         umount()
         mount()
@@ -60,16 +73,19 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS i-node routines
      */
+
+    /**
+     * Allocate new inode with next free number
+     */
     fun createINode(): INode {
         if (freeInodes.size == 0) throw FSIOException("Not enough inodes")
-        val buf = Constants.zeroBlock()
         val freeInodeNumber = freeInodes.removeFirst()
-        disk.read(INode.getBlockNumber(freeInodeNumber), buf)
-        val inode = INode.read(freeInodeNumber, buf)
-        inode.valid = true
-        return inode
+        return INode(freeInodeNumber, true, false, 0, Constants.LINKS_ARRAY.copyOf(), 0)
     }
 
+    /**
+     * Retrieve inode by number
+     */
     fun retrieveINode(n: Int): INode {
         val buf = Constants.zeroBlock()
         disk.read(INode.getBlockNumber(n), buf)
@@ -84,8 +100,15 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS file/directory ops
      */
+
+    /**
+     * Get inode of the root folder
+     */
     fun getRootFolder() = retrieveINode(0)
 
+    /**
+     * Get inode of file/folder by its path
+     */
     fun open(path: String): INode {
         var inode = getRootFolder()
         if (path == Constants.SEPARATOR) return inode
@@ -96,6 +119,9 @@ class FileSystem(private val disk: Disk) {
         return inode
     }
 
+    /**
+     * Create a file in a given folder
+     */
     fun create(name: String, folder: INode): INode {
         val inode = createINode()
         writeInodeToDisk(inode, Constants.zeroBlock())
@@ -103,6 +129,9 @@ class FileSystem(private val disk: Disk) {
         return inode
     }
 
+    /**
+     * Delete a file from a given folder
+     */
     fun delete(entry: INode, folder: INode) {
         if (entry.isDir && ls(entry).any { it.first != "." && it.first != ".." }) {
             throw FSArgumentsException("Dir is not empty")
@@ -113,12 +142,18 @@ class FileSystem(private val disk: Disk) {
         freeInodes.addFirst(entry.number)
     }
 
+    /**
+     * Move file/directory from one to another
+     */
     fun move(entry: INode, srcFolder: INode, dstFolder: INode) {
         if (!srcFolder.isDir || !dstFolder.isDir) throw FSArgumentsException("Incorrect arguments")
         val name = deleteFromDir(entry, srcFolder)
         addToDir(name, entry, dstFolder)
     }
 
+    /**
+     * Rename file/directory in the given folder
+     */
     fun rename(name: String, entry: INode, folder: INode) {
         if (!folder.isDir) throw FSArgumentsException("Incorrect arguments")
         // FIXME: we do not check . and .. here
@@ -137,6 +172,9 @@ class FileSystem(private val disk: Disk) {
         throw FSIOException("File not found")
     }
 
+    /**
+     * Create a directory in a given folder
+     */
     fun mkdir(name: String, folder: INode? = null): INode {
         val inode = createINode()
         inode.isDir = true
@@ -156,6 +194,9 @@ class FileSystem(private val disk: Disk) {
         return inode
     }
 
+    /**
+     * List files/dictionaries in a given folder
+     */
     fun ls(folder: INode): List<Pair<String, Int>> {
         val dentries = folder.size / Constants.DENTRY_SIZE
         if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
@@ -235,14 +276,23 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS low level read-write routines
      */
+    /**
+     * Read the file contents from the beginning to the end
+     */
     fun readToEnd(inode: INode): ByteArray {
         val buffer = ByteBuffer.allocate(inode.size)
         read(inode, buffer)
         return buffer.array()
     }
 
+    /**
+     * Read the file contents from the beginning to max buffer size
+     */
     fun read(inode: INode, buffer: ByteBuffer) = read(inode, buffer, 0, buffer.limit())
 
+    /**
+     * Read the file contents from the given offset limited by length
+     */
     @OptIn(ExperimentalTime::class)
     fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         // corner case excluded from the estimation
@@ -293,9 +343,19 @@ class FileSystem(private val disk: Disk) {
         return value
     }
 
+    /**
+     * Write to the file from the beginning to max buffer size
+     */
     fun write(inode: INode, buffer: ByteBuffer) = write(inode, buffer, 0, buffer.limit())
+
+    /**
+     * Append to the end of the file
+     */
     fun append(inode: INode, buffer: ByteBuffer) = write(inode, buffer, inode.size, buffer.limit())
 
+    /**
+     * Write to the file from the given offset limited by length
+     */
     @OptIn(ExperimentalTime::class)
     fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
         // corner case excluded from the estimation
@@ -377,6 +437,9 @@ class FileSystem(private val disk: Disk) {
         return value
     }
 
+    /**
+     * Truncate file contents
+     */
     fun truncate(inode: INode, offset: Int) {
         if (offset < 0 || offset >= inode.size && offset != 0) throw FSArgumentsException("Incorrect arguments")
         val buf = Constants.zeroBlock()
@@ -413,6 +476,10 @@ class FileSystem(private val disk: Disk) {
 
     /**
      * FS Misc routines
+     */
+
+    /**
+     * Filesystem stat routines
      */
     fun fstat() = FileSystemStat(freeInodes.size, sb.inodes, freeDataBlocks.size, sb.blocks - sb.inodeBlocks)
 
@@ -479,7 +546,10 @@ class FileSystem(private val disk: Disk) {
     }
 
     companion object {
-        fun path2fsPath(path: String) = "${Constants.SEPARATOR}${path.replace(File.separator, Constants.SEPARATOR)}"
+        /**
+         * Transform relative OS path to FS path
+         */
+        fun relPath2fsPath(path: String) = "${Constants.SEPARATOR}${path.replace(File.separator, Constants.SEPARATOR)}"
     }
 
     data class FileSystemStat(
