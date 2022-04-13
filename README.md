@@ -45,3 +45,4 @@
 2. By increasing the block size we can increase the file size, but this will lead into increased internal fragmentation
 3. In order to get rid of O(n*n), B-Trees should be implemented both for inode pointers and dentries
 4. In order to get rid of dentry internal fragmentation, another storage concept for filenames should be implemented
+5. Implementation does not support multi-threading, so won't scale horizontally
