@@ -30,8 +30,8 @@ class FileSystemFunctionalTest {
             } else {
                 osFile.substring(0, osFile.lastIndexOf(File.separator))
             }
-            val fsFile = FileSystem.path2fsPath(osFile)
-            val fsFolder = FileSystem.path2fsPath(osFolder)
+            val fsFile = FileSystem.relPath2fsPath(osFile)
+            val fsFolder = FileSystem.relPath2fsPath(osFolder)
             fs.delete(fs.open(fsFile), fs.open(fsFolder))
         }
         logStats("Removing files", fs.fstat())
@@ -45,7 +45,7 @@ class FileSystemFunctionalTest {
         for (i in newListOfFiles.indices) {
             val osFile = newListOfFiles[i]
             val osPath = Paths.get(rootPath.toString(), osFile).toAbsolutePath()
-            val fsFile = "${Constants.SEPARATOR}$newPrefix${FileSystem.path2fsPath(osFile)}"
+            val fsFile = "${Constants.SEPARATOR}$newPrefix${FileSystem.relPath2fsPath(osFile)}"
             val fsBuf = fs.readToEnd(fs.open(fsFile))
             val osBuf = osPath.toFile().readBytes()
             assertTrue { fsBuf.contentEquals(osBuf) }
