@@ -1,6 +1,7 @@
 package fs4jb
 
 import org.junit.Test
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.file.Paths
 import kotlin.test.assertEquals
@@ -9,7 +10,7 @@ import kotlin.test.assertNotNull
 
 class FileSystemOpsTest {
     private fun prepareFs(name: String, blocks: Int = 10): FileSystem {
-        val disk = Disk(Paths.get("build", "out", "$name.jb"), blocks)
+        val disk = Disk(Paths.get("build", "$name.jb"), blocks)
         val fs = FileSystem(disk)
         fs.format()
         fs.mount()
@@ -172,14 +173,11 @@ class FileSystemOpsTest {
 
     @Test
     fun relPathsToFsPath() {
-        val windowsRel = "my\\folder\\file"
-        val linuxRel = "my/folder/file"
+        val osRel = "my${File.separator}folder${File.separator}file"
         val empty = ""
-        val fsFromWindows = FileSystem.relPath2fsPath(windowsRel)
-        val fsFromLinux = FileSystem.relPath2fsPath(linuxRel)
+        val fsFromOs = FileSystem.relPath2fsPath(osRel)
         val fsFromEmpty = FileSystem.relPath2fsPath(empty)
-        assertEquals(fsFromWindows, fsFromLinux)
-        assertEquals(fsFromWindows, "${Constants.SEPARATOR}my${Constants.SEPARATOR}folder${Constants.SEPARATOR}file")
-        assertEquals(fsFromEmpty, "${Constants.SEPARATOR}")
+        assertEquals(fsFromOs, "${Constants.SEPARATOR}my${Constants.SEPARATOR}folder${Constants.SEPARATOR}file")
+        assertEquals(fsFromEmpty, Constants.SEPARATOR)
     }
 }

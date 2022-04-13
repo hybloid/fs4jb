@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 class SuperBlockTest {
     @Test
     fun writeAndRead() {
-        val disk = Disk(Paths.get("build", "out", "superblock.jb"), 1)
+        val disk = Disk(Paths.get("build", "superblock.jb"), 1)
         disk.open(true)
         val sb = SuperBlock(Constants.MAGIC, 3, 2, 1)
         sb.write(disk)

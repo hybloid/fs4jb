@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 
 class FileSystemRWTest {
     private fun prepareFs(name: String, blocks: Int = 10): FileSystem {
-        val disk = Disk(Paths.get("build", "out", "$name.jb"), blocks)
+        val disk = Disk(Paths.get("build", "$name.jb"), blocks)
         val fs = FileSystem(disk)
         fs.format()
         fs.mount()

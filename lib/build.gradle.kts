@@ -14,6 +14,18 @@ plugins {
     `java-library`
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+    kotlinOptions {
+        jvmTarget = "11"
+        freeCompilerArgs = listOf("-Xopt-in=kotlin.RequiresOptIn")
+    }
+}
+
 repositories {
     // Use Maven Central for resolving dependencies.
     mavenCentral()

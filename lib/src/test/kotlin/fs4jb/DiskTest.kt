@@ -9,7 +9,7 @@ class DiskTest {
     @Test
     fun writeAndReadBlocks() {
         val blocks = 10
-        val disk = Disk(Paths.get("build", "out", "test.jb"), blocks)
+        val disk = Disk(Paths.get("build", "test.jb"), blocks)
 
         disk.open(true)
         val buf = Constants.zeroBlock()
