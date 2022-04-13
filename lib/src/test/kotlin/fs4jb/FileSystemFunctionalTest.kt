@@ -21,6 +21,7 @@ class FileSystemFunctionalTest {
 
         val rootPath = File(".").toPath().toAbsolutePath()
         val listOfFiles = copyFilesToFS(rootPath, fs, fs.getRootFolder())
+        logStats("Initial copy", fs.fstat())
         listOfFiles.shuffle()
         for (i in 0..(listOfFiles.size * 70 / 100)) {
             val osFile = listOfFiles[i]
@@ -33,9 +34,11 @@ class FileSystemFunctionalTest {
             val fsFolder = fs.path2fsPath(osFolder)
             fs.delete(fs.open(fsFile), fs.open(fsFolder))
         }
+        logStats("Removing files", fs.fstat())
         val newPrefix = "newdir4test"
         val newRoot = fs.mkdir(newPrefix, fs.getRootFolder())
         val newListOfFiles = copyFilesToFS(rootPath, fs, newRoot)
+        logStats("Reinsert files", fs.fstat())
         fs.remount()
         for (i in newListOfFiles.indices) {
             val osFile = newListOfFiles[i]
@@ -45,7 +48,22 @@ class FileSystemFunctionalTest {
             val osBuf = osPath.toFile().readBytes()
             assertTrue { fsBuf.contentEquals(osBuf) }
         }
+        logStats("Verify files", fs.fstat())
         fs.umount()
+    }
+
+    private fun logStats(stage: String, stats: FileSystem.FileSystemStat) {
+        println("=".repeat(20))
+        println("Stage      : $stage")
+        println("Write speed: ${Metrics.writeSpeed()} kb/sec")
+        println("Read speed : ${Metrics.readSpeed()} kb/sec")
+        println("Raw writes : ${Metrics.lowLevelWrites}")
+        println("Raw reads  : ${Metrics.lowLevelReads}")
+        println("Used inodes: ${stats.totalINodes - stats.freeInodes}(${stats.totalINodes})")
+        println("Used blocks: ${stats.totalDataBlocks - stats.freeDataBlocks}(${stats.totalDataBlocks})")
+        println("Used size  : ${(stats.totalDataBlocks - stats.freeDataBlocks) * Constants.BLOCK_SIZE / 1024} kb")
+        println("Free size  : ${(stats.freeDataBlocks) * Constants.BLOCK_SIZE / 1024} kb")
+        println("=".repeat(20))
     }
 
     private fun copyFilesToFS(

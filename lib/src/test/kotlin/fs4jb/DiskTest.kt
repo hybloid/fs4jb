@@ -18,8 +18,8 @@ class DiskTest {
             assertEquals(disk.write(i, buf), Constants.BLOCK_SIZE)
         }
         disk.close()
-        assertEquals(Metrics.reads, 0)
-        assertEquals(Metrics.writes, blocks)
+        assertEquals(Metrics.lowLevelReads, 0)
+        assertEquals(Metrics.lowLevelWrites, blocks)
         buf.rewind()
         val readBuf = ByteBuffer.allocate(Constants.BLOCK_SIZE)
         disk.open()
@@ -28,7 +28,7 @@ class DiskTest {
             assertEquals(buf, readBuf)
         }
         disk.close()
-        assertEquals(Metrics.reads, blocks)
-        assertEquals(Metrics.writes, 0)
+        assertEquals(Metrics.lowLevelReads, blocks)
+        assertEquals(Metrics.lowLevelWrites, 0)
     }
 }

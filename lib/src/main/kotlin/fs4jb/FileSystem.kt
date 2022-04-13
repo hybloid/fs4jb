@@ -4,6 +4,8 @@ import mu.KotlinLogging
 import java.io.File
 import java.nio.ByteBuffer
 import kotlin.collections.ArrayDeque
+import kotlin.time.ExperimentalTime
+import kotlin.time.measureTimedValue
 
 
 class FileSystem(private val disk: Disk) {
@@ -11,8 +13,6 @@ class FileSystem(private val disk: Disk) {
     private val logger = KotlinLogging.logger {}
     private val freeInodes = ArrayDeque<Int>()
     private val freeDataBlocks = ArrayDeque<Int>()
-
-    fun freeStat() = Pair(freeInodes.size, freeDataBlocks.size) // TODO : Convert to normal stats
 
     /**
      * FS Main routines
@@ -35,8 +35,8 @@ class FileSystem(private val disk: Disk) {
             }
             mkdir(Constants.SEPARATOR)
         }
-        disk.close()
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
+        umount()
     }
 
     fun mount() {
@@ -92,8 +92,8 @@ class FileSystem(private val disk: Disk) {
 
     fun open(path: String): INode {
         var inode = getRootFolder()
-        val subPaths = path.split(Constants.SEPARATOR)
         if (path == Constants.SEPARATOR) return inode
+        val subPaths = path.split(Constants.SEPARATOR)
         for (i in 1 until subPaths.size) {
             inode = locate(subPaths[i], inode)
         }
@@ -246,124 +246,138 @@ class FileSystem(private val disk: Disk) {
 
     fun read(inode: INode, buffer: ByteBuffer) = read(inode, buffer, 0, buffer.limit())
 
+    @OptIn(ExperimentalTime::class)
     fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
+        // corner case excluded from the estimation
         if (length == 0) {
             buffer.clear()
             return 0
         }
-        val end = start + length - 1
-        if (start < 0 || end >= inode.size || buffer.capacity() < length) {
-            throw FSArgumentsException("Incorrect arguments")
-        }
-        buffer.clear()
 
-        val buf = Constants.zeroBlock()
-        val startBlockId = start / Constants.BLOCK_SIZE
-        val startBlockPosition = start.mod(Constants.BLOCK_SIZE)
-        val endBlockId = end / Constants.BLOCK_SIZE
-        val endBlockPosition = end.mod(Constants.BLOCK_SIZE)
-
-        var readCount = 0
-        disk.read(inode.links[startBlockId], buf)
-        if (startBlockId == endBlockId) {
-            // special case
-            val lengthToRead = endBlockPosition - startBlockPosition + 1
-            buffer.put(buf.array(), startBlockPosition, lengthToRead)
-            readCount += lengthToRead
-        } else {
-            val startPartLength = Constants.BLOCK_SIZE - startBlockPosition
-            val endPartLength = endBlockPosition + 1
-            buffer.put(buf.array(), startBlockPosition, startPartLength)
-            readCount += startPartLength
-            for (i in startBlockId + 1 until endBlockId) {
-                disk.read(inode.links[i], buf)
-                buffer.put(buf)
-                readCount += Constants.BLOCK_SIZE
+        val (value, elapsed) = measureTimedValue {
+            val end = start + length - 1
+            if (start < 0 || end >= inode.size || buffer.capacity() < length) {
+                throw FSArgumentsException("Incorrect arguments")
             }
-            disk.read(inode.links[endBlockId], buf)
-            buffer.put(buf.array(), 0, endPartLength)
-            readCount += endPartLength
+            buffer.clear()
+
+            val buf = Constants.zeroBlock()
+            val startBlockId = start / Constants.BLOCK_SIZE
+            val startBlockPosition = start.mod(Constants.BLOCK_SIZE)
+            val endBlockId = end / Constants.BLOCK_SIZE
+            val endBlockPosition = end.mod(Constants.BLOCK_SIZE)
+
+            var readCount = 0
+            disk.read(inode.links[startBlockId], buf)
+            if (startBlockId == endBlockId) {
+                // special case
+                val lengthToRead = endBlockPosition - startBlockPosition + 1
+                buffer.put(buf.array(), startBlockPosition, lengthToRead)
+                readCount += lengthToRead
+            } else {
+                val startPartLength = Constants.BLOCK_SIZE - startBlockPosition
+                val endPartLength = endBlockPosition + 1
+                buffer.put(buf.array(), startBlockPosition, startPartLength)
+                readCount += startPartLength
+                for (i in startBlockId + 1 until endBlockId) {
+                    disk.read(inode.links[i], buf)
+                    buffer.put(buf)
+                    readCount += Constants.BLOCK_SIZE
+                }
+                disk.read(inode.links[endBlockId], buf)
+                buffer.put(buf.array(), 0, endPartLength)
+                readCount += endPartLength
+            }
+            if (readCount != length) throw FSIOException("Incorrect length was read")
+            buffer.flip()
+            length
         }
-        if (readCount != length) throw FSIOException("Incorrect length was read")
-        buffer.flip()
-        return length
+        Metrics.logReadSpeed(value, elapsed)
+        return value
     }
 
     fun write(inode: INode, buffer: ByteBuffer) = write(inode, buffer, 0, buffer.limit())
     fun append(inode: INode, buffer: ByteBuffer) = write(inode, buffer, inode.size, buffer.limit())
 
+    @OptIn(ExperimentalTime::class)
     fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
+        // corner case excluded from the estimation
         if (length == 0) {
             buffer.clear()
             return 0
         }
-        val end = start + length - 1
-        if (start < 0 || end >= Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE || buffer.capacity() < length) {
-            throw FSArgumentsException("Incorrect arguments")
-        }
-        buffer.rewind()
 
-        val buf = Constants.zeroBlock()
-        val startBlockId = start / Constants.BLOCK_SIZE
-        val startBlockPosition = start.mod(Constants.BLOCK_SIZE)
-        val endBlockId = end / Constants.BLOCK_SIZE
-        val endBlockPosition = end.mod(Constants.BLOCK_SIZE)
-        // allocate needed blocks
-        var inodeUpdateNeeded = false
-        for (i in startBlockId..endBlockId) {
-            if (i >= Constants.LINKS_IN_INODE && inode.indirect == 0) {
-                if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
-                inode.indirect = freeDataBlocks.removeFirst()
-                disk.write(inode.indirect, buf) // TODO : do this only when this block was not allocated
-                inodeUpdateNeeded = true
+        val (value, elapsed) = measureTimedValue {
+            val end = start + length - 1
+            if (start < 0 || end >= Constants.INODE_TOTAL_LINKS_COUNT * Constants.BLOCK_SIZE || buffer.capacity() < length) {
+                throw FSArgumentsException("Incorrect arguments")
             }
+            buffer.rewind()
 
-            if (inode.links[i] == 0) {
-                if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
-                inode.links[i] = freeDataBlocks.removeFirst()
-                disk.write(inode.links[i], buf) // TODO : do this only when this block was not allocated
-                inodeUpdateNeeded = true
-            }
-        }
-        disk.read(inode.links[startBlockId], buf)
+            val buf = Constants.zeroBlock()
+            val startBlockId = start / Constants.BLOCK_SIZE
+            val startBlockPosition = start.mod(Constants.BLOCK_SIZE)
+            val endBlockId = end / Constants.BLOCK_SIZE
+            val endBlockPosition = end.mod(Constants.BLOCK_SIZE)
+            // allocate needed blocks
+            var inodeUpdateNeeded = false
+            for (i in startBlockId..endBlockId) {
+                if (i >= Constants.LINKS_IN_INODE && inode.indirect == 0) {
+                    if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
+                    inode.indirect = freeDataBlocks.removeFirst()
+                    disk.write(inode.indirect, buf) // TODO : do this only when this block was not allocated
+                    inodeUpdateNeeded = true
+                }
 
-        buf.position(startBlockPosition)
-        var writeCount = 0
-        if (startBlockId == endBlockId) {
-            // special case
-            buf.put(buffer)
-            if (buf.position() != endBlockPosition + 1) {
-                throw FSIOException("IO when writing to file")
+                if (inode.links[i] == 0) {
+                    if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
+                    inode.links[i] = freeDataBlocks.removeFirst()
+                    disk.write(inode.links[i], buf) // TODO : do this only when this block was not allocated
+                    inodeUpdateNeeded = true
+                }
             }
-            disk.write(inode.links[startBlockId], buf)
-            writeCount = buffer.limit()
-        } else {
-            val startPartLength = Constants.BLOCK_SIZE - startBlockPosition
-            val endPartLength = endBlockPosition + 1
-            buf.put(buffer.array(), 0, startPartLength)
-            disk.write(inode.links[startBlockId], buf)
-            writeCount += startPartLength
-            buf.clear()
-            for (i in startBlockId + 1 until endBlockId) {
-                buf.put(buffer.array(), writeCount, Constants.BLOCK_SIZE)
-                disk.write(inode.links[i], buf)
-                writeCount += Constants.BLOCK_SIZE
+            disk.read(inode.links[startBlockId], buf)
+
+            buf.position(startBlockPosition)
+            var writeCount = 0
+            if (startBlockId == endBlockId) {
+                // special case
+                buf.put(buffer)
+                if (buf.position() != endBlockPosition + 1) {
+                    throw FSIOException("IO when writing to file")
+                }
+                disk.write(inode.links[startBlockId], buf)
+                writeCount = buffer.limit()
+            } else {
+                val startPartLength = Constants.BLOCK_SIZE - startBlockPosition
+                val endPartLength = endBlockPosition + 1
+                buf.put(buffer.array(), 0, startPartLength)
+                disk.write(inode.links[startBlockId], buf)
+                writeCount += startPartLength
                 buf.clear()
+                for (i in startBlockId + 1 until endBlockId) {
+                    buf.put(buffer.array(), writeCount, Constants.BLOCK_SIZE)
+                    disk.write(inode.links[i], buf)
+                    writeCount += Constants.BLOCK_SIZE
+                    buf.clear()
+                }
+                buf.put(buffer.array(), writeCount, endPartLength)
+                disk.write(inode.links[endBlockId], buf)
+                writeCount += endPartLength
             }
-            buf.put(buffer.array(), writeCount, endPartLength)
-            disk.write(inode.links[endBlockId], buf)
-            writeCount += endPartLength
+            if (writeCount != length) throw FSIOException("Incorrect length was written")
+            // UPDATE INODE SIZE
+            if (inode.size < end + 1) {
+                inode.size = end + 1
+                inodeUpdateNeeded = true
+            }
+            if (inodeUpdateNeeded) {
+                writeInodeToDisk(inode, buf)
+            }
+            length
         }
-        if (writeCount != length) throw FSIOException("Incorrect length was written")
-        // UPDATE INODE SIZE
-        if (inode.size < end + 1) {
-            inode.size = end + 1
-            inodeUpdateNeeded = true
-        }
-        if (inodeUpdateNeeded) {
-            writeInodeToDisk(inode, buf)
-        }
-        return length
+        Metrics.logWriteSpeed(value, elapsed)
+        return value
     }
 
     fun truncate(inode: INode, offset: Int) {
@@ -403,6 +417,8 @@ class FileSystem(private val disk: Disk) {
     /**
      * FS Misc routines
      */
+    fun freeStat() = Pair(freeInodes.size, freeDataBlocks.size) // TODO : Convert to normal stats
+    fun fstat() = FileSystemStat(freeInodes.size, sb.inodes, freeDataBlocks.size, sb.blocks - sb.inodeBlocks)
     fun path2fsPath(path: String) = "${Constants.SEPARATOR}${path.replace(File.separator, Constants.SEPARATOR)}"
 
     private fun writeInodeToDisk(inode: INode, buf: ByteBuffer) {
@@ -466,6 +482,9 @@ class FileSystem(private val disk: Disk) {
                 freeDataBlocks.addLast(i)
             }
         }
+        val a = freeDataBlocks
     }
+
+    data class FileSystemStat(val freeInodes: Int, val totalINodes: Int, val freeDataBlocks: Int, val totalDataBlocks: Int)
 }
 

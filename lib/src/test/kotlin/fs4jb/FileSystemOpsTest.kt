@@ -27,6 +27,7 @@ class FileSystemOpsTest {
         assertEquals(String(fs.readToEnd(file)), "Hello!world!")
         fs.truncate(file, 5)
         assertEquals(String(fs.readToEnd(file)), "Hello")
+        fs.umount()
     }
 
     @Test
@@ -41,6 +42,31 @@ class FileSystemOpsTest {
         buf = ByteBuffer.allocate(6)
         fs.read(file, buf, 6, 6)
         assertEquals(String(buf.array()), "world!")
+        fs.umount()
+    }
+
+    @Test
+    fun readWriteZero() {
+        val fs = prepareFs("readWriteZero")
+        val file = fs.create("file", fs.getRootFolder())
+        val zeroBuf = ByteBuffer.allocate(0)
+        fs.write(file, zeroBuf) // does not fail
+        fs.write(file, ByteBuffer.wrap("Hello world!".toByteArray()))
+        zeroBuf.rewind()
+        fs.write(file, zeroBuf) // does not fail
+        fs.read(file, zeroBuf) // does not fail
+        val buf = ByteBuffer.allocate(12)
+        fs.read(file, buf)
+        fs.read(file, zeroBuf) // does not fail
+        assertEquals(String(buf.array()), "Hello world!")
+        fs.umount()
+    }
+
+    @Test
+    fun openRoot() {
+        val fs = prepareFs("openRoot")
+        assertEquals(fs.open(Constants.SEPARATOR), fs.getRootFolder())
+        fs.umount()
     }
 
     @Test
@@ -129,6 +155,7 @@ class FileSystemOpsTest {
         fs.mkdir("three", root)
         fs.delete(dir1, root)
         assertEquals(fs.ls(root).map { it.first }, listOf(".", "..", "two", "three"))
+        fs.umount()
     }
 
     @Test
@@ -140,5 +167,6 @@ class FileSystemOpsTest {
         val dir3 = fs.mkdir("three", root)
         fs.delete(dir3, root)
         assertEquals(fs.ls(root).map { it.first }, listOf(".", "..", "one", "two"))
+        fs.umount()
     }
 }
