@@ -571,13 +571,10 @@ class FileSystem(private val disk: Disk) {
 
     private fun fsck() {
         val buf = Constants.zeroBlock()
-        val inodeBlocksBuf = ByteBuffer.allocate(sb.inodeBlocks * Constants.BLOCK_SIZE)
         val indirectBuf = Constants.zeroBlock()
         val busyBlocks = mutableSetOf<Int>()
-        disk.channelRead(inodeBlocksBuf, Constants.SUPERBLOCK_SIZE.toLong())
         for (i in 0 until sb.inodeBlocks) {
-            buf.clear()
-            buf.put(inodeBlocksBuf.array(), i * Constants.BLOCK_SIZE, Constants.BLOCK_SIZE)
+            disk.read(i, buf)
             for (j in 0 until Constants.INODES_PER_BLOCK) {
                 val number = i * Constants.INODES_PER_BLOCK + j
                 if (INode.isValid(number, buf)) {
