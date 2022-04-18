@@ -385,6 +385,8 @@ class FileSystem(private val disk: Disk) {
      */
     /**
      * Read the file contents from the beginning to the end
+     * @param inode inode object of the file to be read
+     * @return ByteArray of all the contents
      */
     fun readToEnd(inode: INode): ByteArray {
         val buffer = ByteBuffer.allocate(inode.size)
@@ -394,11 +396,19 @@ class FileSystem(private val disk: Disk) {
 
     /**
      * Read the file contents from the beginning to max buffer size
+     * @param inode inode object of the file to be read
+     * @param buffer ByteBuffer to be read. Number of read bytes is limited with buffer size
+     * @return count of read bytes
      */
     fun read(inode: INode, buffer: ByteBuffer) = read(inode, buffer, 0, buffer.limit())
 
     /**
      * Read the file contents from the given offset limited by length
+     * @param inode inode object of the file to be read
+     * @param buffer ByteBuffer to be read
+     * @param start starting offset
+     * @param length count of bytes to be read
+     * @return count of read bytes
      */
     @OptIn(ExperimentalTime::class)
     fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
@@ -452,16 +462,27 @@ class FileSystem(private val disk: Disk) {
 
     /**
      * Write to the file from the beginning to max buffer size
+     * @param inode inode object of the file to be written to
+     * @param buffer ByteBuffer to be written
+     * @return count of written bytes
      */
     fun write(inode: INode, buffer: ByteBuffer) = write(inode, buffer, 0, buffer.limit())
 
     /**
      * Append to the end of the file
+     * @param inode inode object of the file to be appended to
+     * @param buffer ByteBuffer to be written
+     * @return count of written bytes
      */
     fun append(inode: INode, buffer: ByteBuffer) = write(inode, buffer, inode.size, buffer.limit())
 
     /**
      * Write to the file from the given offset limited by length
+     * @param inode inode object of the file to be written to
+     * @param buffer ByteBuffer to be written
+     * @param start starting offset
+     * @param length count of bytes to be written
+     * @return count of written bytes
      */
     @OptIn(ExperimentalTime::class)
     fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
@@ -543,7 +564,9 @@ class FileSystem(private val disk: Disk) {
     }
 
     /**
-     * Truncate file contents
+     * Truncate file/directory contents
+     * @param inode inode object of the target file/directory
+     * @param offset offset starting from which all the contents go away
      */
     fun truncate(inode: INode, offset: Int) {
         if (offset < 0 || offset >= inode.size && offset != 0) throw FSArgumentsException("Incorrect arguments")
@@ -584,7 +607,7 @@ class FileSystem(private val disk: Disk) {
      */
 
     /**
-     * Filesystem stat routines
+     * Filesystem statistics
      */
     fun fstat() = FileSystemStat(
         freeInodes.stream().count().toInt(),
