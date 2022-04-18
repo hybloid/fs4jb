@@ -7,8 +7,7 @@ import java.nio.file.Path
 
 class Disk(private val path: Path, val nBlocks: Int) {
     private lateinit var channel: FileChannel
-    private val cache = LRU()
-    private val cacheRoutine = { idx: Any, buf: Any ->
+    private val cache = LRU { idx: Any, buf: Any ->
         writeEntryToDisk(
             idx as Int,
             buf as ByteArray
@@ -24,7 +23,7 @@ class Disk(private val path: Path, val nBlocks: Int) {
     }
 
     fun close() {
-        cache.iterate(cacheRoutine)
+        cache.processRemaining()
         cache.clear()
         channel.force(true)
         channel.close()
@@ -53,13 +52,13 @@ class Disk(private val path: Path, val nBlocks: Int) {
 
         val count = channelRead(buffer, blockOffset(blockNum))
         if (count != Constants.BLOCK_SIZE) throw FSIOException("IO error while reading")
-        cache.put(blockNum, buffer.array().clone(), cacheRoutine)
+        cache.put(blockNum, buffer.array().clone())
         return count
     }
 
     fun write(blockNum: Int, buffer: ByteBuffer): Int {
         if (blockNum >= nBlocks || buffer.capacity() != Constants.BLOCK_SIZE) throw FSArgumentsException("Incorrect arguments")
-        cache.put(blockNum, buffer.array().clone(), cacheRoutine)
+        cache.put(blockNum, buffer.array().clone())
         return buffer.array().size
     }
 

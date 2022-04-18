@@ -20,7 +20,7 @@ class FileSystemOpsTest {
     @Test
     fun appendAndWriteToFile() {
         val fs = prepareFs("appendAndWriteToFile")
-        val file = fs.create("file", fs.getRootFolder())
+        val file = fs.create("file", fs.getRootDir())
         fs.append(file, ByteBuffer.wrap("Hello ".toByteArray()))
         fs.append(file, ByteBuffer.wrap("world!".toByteArray()))
         assertEquals(String(fs.readToEnd(file)), "Hello world!")
@@ -34,7 +34,7 @@ class FileSystemOpsTest {
     @Test
     fun readFromFile() {
         val fs = prepareFs("readFromFile")
-        val file = fs.create("file", fs.getRootFolder())
+        val file = fs.create("file", fs.getRootDir())
         fs.write(file, ByteBuffer.wrap("Hello world!".toByteArray()))
         assertEquals(String(fs.readToEnd(file)), "Hello world!")
         var buf = ByteBuffer.allocate(12)
@@ -49,7 +49,7 @@ class FileSystemOpsTest {
     @Test
     fun readWriteZero() {
         val fs = prepareFs("readWriteZero")
-        val file = fs.create("file", fs.getRootFolder())
+        val file = fs.create("file", fs.getRootDir())
         val zeroBuf = ByteBuffer.allocate(0)
         fs.write(file, zeroBuf) // does not fail
         fs.write(file, ByteBuffer.wrap("Hello world!".toByteArray()))
@@ -66,14 +66,14 @@ class FileSystemOpsTest {
     @Test
     fun openRoot() {
         val fs = prepareFs("openRoot")
-        assertEquals(fs.open(Constants.SEPARATOR), fs.getRootFolder())
+        assertEquals(fs.open(Constants.SEPARATOR), fs.getRootDir())
         fs.umount()
     }
 
     @Test
     fun createAndOpen() {
         val fs = prepareFs("createAndOpen")
-        val dir = fs.mkdir("one", fs.getRootFolder())
+        val dir = fs.mkdir("one", fs.getRootDir())
         val file1 = fs.create("two", dir)
         fs.write(file1, ByteBuffer.wrap("three".toByteArray()))
         fs.remount()
@@ -85,7 +85,7 @@ class FileSystemOpsTest {
     @Test
     fun createAndDelete() {
         val fs = prepareFs("createAndDelete")
-        val dir = fs.mkdir("one", fs.getRootFolder())
+        val dir = fs.mkdir("one", fs.getRootDir())
         val file = fs.create("two", dir)
         assertNotNull(fs.open("/one/two"))
         fs.delete(file, dir)
@@ -98,12 +98,12 @@ class FileSystemOpsTest {
     @Test
     fun createAndMove() {
         val fs = prepareFs("createAndMove")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         val dir = fs.mkdir("one", root)
         val file = fs.create("two", dir)
         assertNotNull(fs.open("/one/two"))
         assertFailsWith<FSIOException> { fs.open("/two") }
-        fs.move(file, dir, fs.getRootFolder())
+        fs.move(file, dir, fs.getRootDir())
         assertNotNull(fs.open("/two"))
         fs.remount()
         assertFailsWith<FSIOException> { fs.open("/one/two") }
@@ -114,7 +114,7 @@ class FileSystemOpsTest {
     @Test
     fun createAndRename() {
         val fs = prepareFs("createAndRename")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         val dir = fs.mkdir("one", root)
         val file = fs.create("two", dir)
         assertNotNull(fs.open("/one/two"))
@@ -128,7 +128,7 @@ class FileSystemOpsTest {
     @Test
     fun funWithPathTraversal() {
         val fs = prepareFs("funWithPathTraversal")
-        val dir = fs.mkdir("one", fs.getRootFolder())
+        val dir = fs.mkdir("one", fs.getRootDir())
         fs.mkdir("two", dir)
         val file = fs.create("three", dir)
 
@@ -150,7 +150,7 @@ class FileSystemOpsTest {
     @Test
     fun deleteFromTheMiddle() {
         val fs = prepareFs("deleteFromTheMiddle")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         val dir1 = fs.mkdir("one", root)
         fs.mkdir("two", root)
         fs.mkdir("three", root)
@@ -162,7 +162,7 @@ class FileSystemOpsTest {
     @Test
     fun deleteFromTheEnd() {
         val fs = prepareFs("deleteFromTheEnd")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         fs.mkdir("one", root)
         fs.mkdir("two", root)
         val dir3 = fs.mkdir("three", root)
