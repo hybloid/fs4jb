@@ -640,7 +640,7 @@ class FileSystem(private val disk: Disk) {
     private fun fsck() {
         val buf = Constants.zeroBlock()
         val indirectBuf = Constants.zeroBlock()
-        val busyBlocks = mutableSetOf<Int>()
+        freeDataBlocks.set(sb.inodeBlocks, sb.blocks)
         for (i in 0 until sb.inodeBlocks) {
             disk.read(i, buf)
             for (j in 0 until Constants.INODES_PER_BLOCK) {
@@ -650,11 +650,11 @@ class FileSystem(private val disk: Disk) {
                     if (inode.indirect != 0) {
                         disk.read(inode.indirect, indirectBuf)
                         inode.readIndirect(indirectBuf)
-                        busyBlocks.add(inode.indirect)
+                        freeDataBlocks.clear(inode.indirect)
                     }
                     for (k in 0..Constants.INODE_TOTAL_LINKS_COUNT) {
                         if (inode.links[k] != 0) {
-                            busyBlocks.add(inode.links[k])
+                            freeDataBlocks.clear(inode.links[k])
                         } else {
                             break
                         }
@@ -662,11 +662,6 @@ class FileSystem(private val disk: Disk) {
                 } else {
                     freeInodes.set(number)
                 }
-            }
-        }
-        for (i in sb.inodeBlocks until sb.blocks) {
-            if (!busyBlocks.contains(i)) {
-                freeDataBlocks.set(i)
             }
         }
     }
