@@ -29,12 +29,8 @@ class FileSystem(private val disk: Disk) {
         for (i in 0 until sb.inodeBlocks) {
             disk.write(i, Constants.zeroBlock())
         }
-        for (i in 0 until sb.inodes) {
-            freeInodes.set(i)
-        }
-        for (i in sb.inodeBlocks until sb.blocks) {
-            freeDataBlocks.set(i)
-        }
+        freeInodes.set(0, sb.inodes)
+        freeDataBlocks.set(sb.inodeBlocks, sb.blocks)
         mkdir(Constants.SEPARATOR, null)
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
         umount()
