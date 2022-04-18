@@ -35,7 +35,7 @@ class FileSystem(private val disk: Disk) {
         for (i in sb.inodeBlocks until sb.blocks) {
             freeDataBlocks.addLast(i)
         }
-        mkdir(Constants.SEPARATOR)
+        mkdir(Constants.SEPARATOR, null)
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
         umount()
     }
@@ -110,18 +110,20 @@ class FileSystem(private val disk: Disk) {
      * Get inode of file/folder by its path
      */
     fun open(path: String): INode {
-        var inode = getRootFolder()
-        if (path == Constants.SEPARATOR) return inode
-        val subPaths = path.split(Constants.SEPARATOR)
-        for (i in 1 until subPaths.size) {
-            inode = locate(subPaths[i], inode)
-        }
-        return inode
+        return locateEntryAndParent(path).entry
     }
 
     /**
      * Create a file in a given folder
      */
+    fun create(path: String): INode {
+        val pathParts = parsePath(path)
+        if (pathParts.folder == Constants.SEPARATOR) {
+            return create(path.substring(1), getRootFolder())
+        }
+        return create(pathParts.name, open(pathParts.folder))
+    }
+
     fun create(name: String, folder: INode): INode {
         val inode = createINode()
         writeInodeToDisk(inode, Constants.zeroBlock())
@@ -132,19 +134,30 @@ class FileSystem(private val disk: Disk) {
     /**
      * Delete a file from a given folder
      */
+    fun delete(path: String) {
+        val entryAndParent = locateEntryAndParent(path)
+        delete(entryAndParent.entry, entryAndParent.parent)
+    }
+
     fun delete(entry: INode, folder: INode) {
         if (entry.isDir && ls(entry).any { it.first != "." && it.first != ".." }) {
             throw FSArgumentsException("Dir is not empty")
         }
+        deleteFromDir(entry, folder)
         entry.valid = false // state will be written during truncate
         truncate(entry, 0)
-        deleteFromDir(entry, folder)
         freeInodes.addFirst(entry.number)
     }
 
     /**
      * Move file/directory from one to another
      */
+    fun move(path: String, dstPath: String) {
+        val entryAndParent = locateEntryAndParent(path)
+        val dstFolder = open(dstPath)
+        move(entryAndParent.entry, entryAndParent.parent, dstFolder)
+    }
+
     fun move(entry: INode, srcFolder: INode, dstFolder: INode) {
         if (!srcFolder.isDir || !dstFolder.isDir) throw FSArgumentsException("Incorrect arguments")
         val name = deleteFromDir(entry, srcFolder)
@@ -154,6 +167,12 @@ class FileSystem(private val disk: Disk) {
     /**
      * Rename file/directory in the given folder
      */
+    fun rename(name: String, path: String) {
+        if (name.contains(Constants.SEPARATOR)) throw FSArgumentsException("Incorrect arguments")
+        val entryAndParent = locateEntryAndParent(path)
+        rename(name, entryAndParent.entry, entryAndParent.parent)
+    }
+
     fun rename(name: String, entry: INode, folder: INode) {
         if (!folder.isDir) throw FSArgumentsException("Incorrect arguments")
         // FIXME: we do not check . and .. here
@@ -175,7 +194,15 @@ class FileSystem(private val disk: Disk) {
     /**
      * Create a directory in a given folder
      */
-    fun mkdir(name: String, folder: INode? = null): INode {
+    fun mkdir(path: String): INode {
+        val pathParts = parsePath(path)
+        if (pathParts.folder == Constants.SEPARATOR) {
+            return mkdir(pathParts.name, getRootFolder())
+        }
+        return mkdir(pathParts.name, open(pathParts.folder))
+    }
+
+    fun mkdir(name: String, folder: INode?): INode {
         val inode = createINode()
         inode.isDir = true
         val buffer = ByteBuffer.allocate(Constants.DENTRY_SIZE * 2)
@@ -197,6 +224,8 @@ class FileSystem(private val disk: Disk) {
     /**
      * List files/dictionaries in a given folder
      */
+    fun ls(path: String): List<Pair<String, Int>> = ls(open(path))
+
     fun ls(folder: INode): List<Pair<String, Int>> {
         val dentries = folder.size / Constants.DENTRY_SIZE
         if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
@@ -271,6 +300,19 @@ class FileSystem(private val disk: Disk) {
             }
         }
         throw FSIOException("File not found")
+    }
+
+    private fun locateEntryAndParent(path: String): INodePair {
+        if (path[0] != Constants.SEPARATOR[0]) throw FSArgumentsException("Incorrect arguments")
+        var inode = getRootFolder()
+        var parent = inode
+        if (path == Constants.SEPARATOR) return INodePair(inode, parent)
+        val subPaths = path.split(Constants.SEPARATOR)
+        for (i in 1 until subPaths.size) {
+            parent = inode
+            inode = locate(subPaths[i], inode)
+        }
+        return INodePair(inode, parent)
     }
 
     /**
@@ -508,6 +550,25 @@ class FileSystem(private val disk: Disk) {
         return bytes.copyOf(i + 1)
     }
 
+    private fun parsePath(path: String): NameAndFolder {
+        if (path == Constants.SEPARATOR) {
+            throw FSArgumentsException("Incorrect arguments")
+        }
+
+        // /folder/folder/
+        val lastIndexOfSeparator = path.lastIndexOf(Constants.SEPARATOR)
+        if (lastIndexOfSeparator == path.length - 1) {
+            throw FSArgumentsException("Incorrect arguments")
+        }
+
+        val name = path.substring(lastIndexOfSeparator + 1)
+        if (lastIndexOfSeparator == 0) {
+            return NameAndFolder(name, Constants.SEPARATOR)
+        }
+        val folder = path.substring(0, lastIndexOfSeparator)
+        return NameAndFolder(name, folder)
+    }
+
     private fun fsck() {
         val buf = Constants.zeroBlock()
         val inodeBlocksBuf = ByteBuffer.allocate(sb.inodeBlocks * Constants.BLOCK_SIZE)
@@ -557,6 +618,16 @@ class FileSystem(private val disk: Disk) {
         val totalINodes: Int,
         val freeDataBlocks: Int,
         val totalDataBlocks: Int
+    )
+
+    private data class INodePair(
+        val entry: INode,
+        val parent: INode
+    )
+
+    private data class NameAndFolder(
+        val name: String,
+        val folder: String
     )
 }
 

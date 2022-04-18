@@ -180,4 +180,70 @@ class FileSystemOpsTest {
         assertEquals(fsFromOs, "${Constants.SEPARATOR}my${Constants.SEPARATOR}folder${Constants.SEPARATOR}file")
         assertEquals(fsFromEmpty, Constants.SEPARATOR)
     }
+
+    @Test
+    fun createShortSyntax() {
+        val fs = prepareFs("createShortSyntax")
+        fs.create("/foo")
+        fs.mkdir("/bar")
+        fs.create("/bar/baz")
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", "..", "foo", "bar"))
+        assertEquals(fs.ls("/bar").map { it.first }, listOf(".", "..", "baz"))
+        fs.umount()
+    }
+
+    @Test
+    fun deleteShortSyntax() {
+        val fs = prepareFs("deleteShortSyntax")
+        fs.create("/foo")
+        fs.mkdir("/bar")
+        fs.create("/bar/baz")
+        fs.delete("/bar/baz")
+        assertEquals(fs.ls("/bar").map { it.first }, listOf(".", ".."))
+        fs.delete("/bar")
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", "..", "foo"))
+        fs.delete("/foo")
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", ".."))
+        fs.umount()
+    }
+
+    @Test
+    fun moveShortSyntax() {
+        val fs = prepareFs("moveShortSyntax")
+        fs.create("/foo")
+        fs.mkdir("/bar")
+        fs.create("/bar/baz")
+        fs.move("/bar/baz", "/")
+        assertEquals(fs.ls("/bar").map { it.first }, listOf(".", ".."))
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", "..", "foo", "bar", "baz"))
+        fs.umount()
+    }
+
+    @Test
+    fun renameShortSyntax() {
+        val fs = prepareFs("renameShortSyntax")
+        val foo = fs.create("/foo")
+        fs.mkdir("/bar")
+        val baz = fs.create("/bar/baz")
+        val bar = fs.open("/bar") // size got changed
+        fs.rename("newfoo", "/foo")
+        fs.rename("newbaz", "/bar/baz")
+        assertEquals(foo, fs.open("/newfoo"))
+        assertEquals(baz, fs.open("/bar/newbaz"))
+        assertEquals(bar, fs.open("/bar"))
+        fs.rename("newbar", "/bar")
+        assertEquals(bar, fs.open("/newbar"))
+        assertEquals(baz, fs.open("/newbar/newbaz"))
+        fs.umount()
+    }
+
+    @Test
+    fun mkdirShortSyntax() {
+        val fs = prepareFs("mkdirShortSyntax")
+        fs.mkdir("/foo")
+        fs.mkdir("/foo/bar")
+        fs.mkdir("/foo/bar/baz")
+        assertEquals(fs.ls("/foo/bar/baz").map { it.first }, listOf(".", ".."))
+        fs.umount()
+    }
 }
