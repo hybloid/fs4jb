@@ -16,9 +16,10 @@ class Disk(private val path: Path, val nBlocks: Int) {
 
     fun open(recreate: Boolean = false) {
         Metrics.reset()
-        channel = when (recreate) {
-            true -> FileChannel.open(path, READ, WRITE, CREATE, TRUNCATE_EXISTING)
-            else -> FileChannel.open(path, READ, WRITE, CREATE)
+        channel = if (recreate) {
+            FileChannel.open(path, READ, WRITE, CREATE, TRUNCATE_EXISTING)
+        } else {
+            FileChannel.open(path, READ, WRITE, CREATE)
         }
     }
 
