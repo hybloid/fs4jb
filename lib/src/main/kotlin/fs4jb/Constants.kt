@@ -15,6 +15,7 @@ class Constants {
         const val SUPERBLOCK_SIZE = 16
 
         const val INODE_PROC = 10.0
+        const val MAX_INODE_BLOCKS = 500
         const val INODE_SIZE = 32
         const val LINKS_IN_INODE = 5
         const val INODE_TOTAL_LINKS_COUNT = LINKS_IN_INODE + BLOCK_SIZE / Int.SIZE_BYTES

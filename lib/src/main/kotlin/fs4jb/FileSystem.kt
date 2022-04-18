@@ -3,16 +3,16 @@ package fs4jb
 import mu.KotlinLogging
 import java.io.File
 import java.nio.ByteBuffer
-import kotlin.collections.ArrayDeque
+import java.util.BitSet
 import kotlin.time.ExperimentalTime
 import kotlin.time.measureTimedValue
 
 
 class FileSystem(private val disk: Disk) {
     lateinit var sb: SuperBlock
+    lateinit var freeInodes: BitSet
+    lateinit var freeDataBlocks: BitSet
     private val logger = KotlinLogging.logger {}
-    private val freeInodes = ArrayDeque<Int>()
-    private val freeDataBlocks = ArrayDeque<Int>()
 
     /**
      * FS Main routines
@@ -22,18 +22,18 @@ class FileSystem(private val disk: Disk) {
      * Formats the drive. If it exists, the content will be overwritten
      */
     fun format() {
-        sb = SuperBlock(disk.nBlocks)
+        initSb()
         disk.open(true)
         sb.write(disk)
         // reserve data for inodes
         for (i in 0 until sb.inodeBlocks) {
             disk.write(i, Constants.zeroBlock())
         }
-        for (i in 0 until sb.inodeBlocks * Constants.INODES_PER_BLOCK) {
-            freeInodes.addLast(i)
+        for (i in 0 until sb.inodes) {
+            freeInodes.set(i)
         }
         for (i in sb.inodeBlocks until sb.blocks) {
-            freeDataBlocks.addLast(i)
+            freeDataBlocks.set(i)
         }
         mkdir(Constants.SEPARATOR, null)
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
@@ -45,7 +45,7 @@ class FileSystem(private val disk: Disk) {
      */
     fun mount() {
         disk.open()
-        sb = SuperBlock.read(disk)
+        initSb()
         if (sb.magicNumber != Constants.MAGIC) throw FSArgumentsException("Supplied disk image has incorrect structure")
         logger.info("Disk mounted")
         fsck()
@@ -78,8 +78,7 @@ class FileSystem(private val disk: Disk) {
      * Allocate new inode with next free number
      */
     fun createINode(): INode {
-        if (freeInodes.size == 0) throw FSIOException("Not enough inodes")
-        val freeInodeNumber = freeInodes.removeFirst()
+        val freeInodeNumber = getFreeInodeNum()
         return INode(freeInodeNumber, true, false, 0, Constants.LINKS_ARRAY.copyOf(), 0)
     }
 
@@ -95,6 +94,24 @@ class FileSystem(private val disk: Disk) {
             inode.readIndirect(buf)
         }
         return inode
+    }
+
+    private fun initSb() {
+        sb = SuperBlock(disk.nBlocks)
+        freeInodes = BitSet(sb.inodes)
+        freeDataBlocks = BitSet(sb.blocks)
+    }
+
+    private fun getFreeInodeNum(): Int {
+        val number = freeInodes.nextSetBit(0)
+        freeInodes.clear(number)
+        return number
+    }
+
+    private fun getFreeDataBlockNum(): Int {
+        val number = freeDataBlocks.nextSetBit(sb.inodeBlocks)
+        freeDataBlocks.clear(number)
+        return number
     }
 
     /**
@@ -146,7 +163,7 @@ class FileSystem(private val disk: Disk) {
         deleteFromDir(entry, folder)
         entry.valid = false // state will be written during truncate
         truncate(entry, 0)
-        freeInodes.addFirst(entry.number)
+        freeInodes.set(entry.number)
     }
 
     /**
@@ -422,15 +439,13 @@ class FileSystem(private val disk: Disk) {
             var inodeUpdateNeeded = false
             for (i in startBlockId..endBlockId) {
                 if (i >= Constants.LINKS_IN_INODE && inode.indirect == 0) {
-                    if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
-                    inode.indirect = freeDataBlocks.removeFirst()
+                    inode.indirect = getFreeDataBlockNum()
                     disk.write(inode.indirect, buf) // TODO : do this only when this block was not allocated
                     inodeUpdateNeeded = true
                 }
 
                 if (inode.links[i] == 0) {
-                    if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
-                    inode.links[i] = freeDataBlocks.removeFirst()
+                    inode.links[i] = getFreeDataBlockNum()
                     disk.write(inode.links[i], buf) // TODO : do this only when this block was not allocated
                     inodeUpdateNeeded = true
                 }
@@ -489,18 +504,18 @@ class FileSystem(private val disk: Disk) {
         val lastBlockId = inode.size / Constants.BLOCK_SIZE
         for (i in lastBlockId downTo startBlockId + 1) {
             if (inode.links[i] != 0) {
-                freeDataBlocks.addFirst(inode.links[i])
+                freeDataBlocks.set(inode.links[i])
                 inode.links[i] = 0
             }
         }
         if (startBlockId < Constants.LINKS_IN_INODE && inode.indirect != 0) {
-            freeDataBlocks.addFirst(inode.indirect)
+            freeDataBlocks.set(inode.indirect)
             inode.indirect = 0
         }
         if (offset == 0) {
             // special case, remove all blocks
             if (inode.links[0] != 0) {
-                freeDataBlocks.addFirst(inode.links[0])
+                freeDataBlocks.set(inode.links[0])
                 inode.links[0] = 0
             }
         } else {
@@ -523,7 +538,12 @@ class FileSystem(private val disk: Disk) {
     /**
      * Filesystem stat routines
      */
-    fun fstat() = FileSystemStat(freeInodes.size, sb.inodes, freeDataBlocks.size, sb.blocks - sb.inodeBlocks)
+    fun fstat() = FileSystemStat(
+        freeInodes.stream().count().toInt(),
+        sb.inodes,
+        freeDataBlocks.stream().count().toInt(),
+        sb.blocks - sb.inodeBlocks
+    )
 
     private fun writeInodeToDisk(inode: INode, buf: ByteBuffer) {
         disk.read(INode.getBlockNumber(inode.number), buf)
@@ -592,13 +612,13 @@ class FileSystem(private val disk: Disk) {
                         }
                     }
                 } else {
-                    freeInodes.addLast(number)
+                    freeInodes.set(number)
                 }
             }
         }
         for (i in sb.inodeBlocks until sb.blocks) {
             if (!busyBlocks.contains(i)) {
-                freeDataBlocks.addLast(i)
+                freeDataBlocks.set(i)
             }
         }
     }

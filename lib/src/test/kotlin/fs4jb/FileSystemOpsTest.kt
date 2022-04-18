@@ -246,4 +246,14 @@ class FileSystemOpsTest {
         assertEquals(fs.ls("/foo/bar/baz").map { it.first }, listOf(".", ".."))
         fs.umount()
     }
+
+    @Test
+    fun maxDiskAllocation() {
+        val disk = Disk(Paths.get("build", "maxDiskAllocation.jb"), Int.MAX_VALUE)
+        val fs = FileSystem(disk)
+        fs.format()
+        fs.mount()
+        println(fs.fstat())
+        fs.umount()
+    }
 }
