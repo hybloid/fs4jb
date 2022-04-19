@@ -13,8 +13,8 @@ data class SuperBlock(
     constructor(blocks: Int) : this(
         magicNumber = Constants.MAGIC,
         blocks = blocks,
-        inodeBlocks = ceil(blocks / Constants.INODE_PROC).toInt(),
-        inodes = Constants.INODES_PER_BLOCK * (ceil(blocks / Constants.INODE_PROC).toInt())
+        inodeBlocks = getInodeBlocks(blocks),
+        inodes = Constants.INODES_PER_BLOCK * getInodeBlocks(blocks)
     )
 
     fun write(disk: Disk) {
@@ -37,6 +37,9 @@ data class SuperBlock(
                 inodes = buf.getInt(3 * Int.SIZE_BYTES)
             )
         }
+
+        private fun getInodeBlocks(blocks: Int): Int =
+            minOf(ceil(blocks / Constants.INODE_PROC).toInt(), Constants.MAX_INODE_BLOCKS)
     }
 
 }

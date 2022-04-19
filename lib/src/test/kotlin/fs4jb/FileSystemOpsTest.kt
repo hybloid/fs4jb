@@ -20,7 +20,7 @@ class FileSystemOpsTest {
     @Test
     fun appendAndWriteToFile() {
         val fs = prepareFs("appendAndWriteToFile")
-        val file = fs.create("file", fs.getRootFolder())
+        val file = fs.create("file", fs.getRootDir())
         fs.append(file, ByteBuffer.wrap("Hello ".toByteArray()))
         fs.append(file, ByteBuffer.wrap("world!".toByteArray()))
         assertEquals(String(fs.readToEnd(file)), "Hello world!")
@@ -34,7 +34,7 @@ class FileSystemOpsTest {
     @Test
     fun readFromFile() {
         val fs = prepareFs("readFromFile")
-        val file = fs.create("file", fs.getRootFolder())
+        val file = fs.create("file", fs.getRootDir())
         fs.write(file, ByteBuffer.wrap("Hello world!".toByteArray()))
         assertEquals(String(fs.readToEnd(file)), "Hello world!")
         var buf = ByteBuffer.allocate(12)
@@ -49,7 +49,7 @@ class FileSystemOpsTest {
     @Test
     fun readWriteZero() {
         val fs = prepareFs("readWriteZero")
-        val file = fs.create("file", fs.getRootFolder())
+        val file = fs.create("file", fs.getRootDir())
         val zeroBuf = ByteBuffer.allocate(0)
         fs.write(file, zeroBuf) // does not fail
         fs.write(file, ByteBuffer.wrap("Hello world!".toByteArray()))
@@ -66,14 +66,14 @@ class FileSystemOpsTest {
     @Test
     fun openRoot() {
         val fs = prepareFs("openRoot")
-        assertEquals(fs.open(Constants.SEPARATOR), fs.getRootFolder())
+        assertEquals(fs.open(Constants.SEPARATOR), fs.getRootDir())
         fs.umount()
     }
 
     @Test
     fun createAndOpen() {
         val fs = prepareFs("createAndOpen")
-        val dir = fs.mkdir("one", fs.getRootFolder())
+        val dir = fs.mkdir("one", fs.getRootDir())
         val file1 = fs.create("two", dir)
         fs.write(file1, ByteBuffer.wrap("three".toByteArray()))
         fs.remount()
@@ -85,7 +85,7 @@ class FileSystemOpsTest {
     @Test
     fun createAndDelete() {
         val fs = prepareFs("createAndDelete")
-        val dir = fs.mkdir("one", fs.getRootFolder())
+        val dir = fs.mkdir("one", fs.getRootDir())
         val file = fs.create("two", dir)
         assertNotNull(fs.open("/one/two"))
         fs.delete(file, dir)
@@ -98,12 +98,12 @@ class FileSystemOpsTest {
     @Test
     fun createAndMove() {
         val fs = prepareFs("createAndMove")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         val dir = fs.mkdir("one", root)
         val file = fs.create("two", dir)
         assertNotNull(fs.open("/one/two"))
         assertFailsWith<FSIOException> { fs.open("/two") }
-        fs.move(file, dir, fs.getRootFolder())
+        fs.move(file, dir, fs.getRootDir())
         assertNotNull(fs.open("/two"))
         fs.remount()
         assertFailsWith<FSIOException> { fs.open("/one/two") }
@@ -114,7 +114,7 @@ class FileSystemOpsTest {
     @Test
     fun createAndRename() {
         val fs = prepareFs("createAndRename")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         val dir = fs.mkdir("one", root)
         val file = fs.create("two", dir)
         assertNotNull(fs.open("/one/two"))
@@ -128,7 +128,7 @@ class FileSystemOpsTest {
     @Test
     fun funWithPathTraversal() {
         val fs = prepareFs("funWithPathTraversal")
-        val dir = fs.mkdir("one", fs.getRootFolder())
+        val dir = fs.mkdir("one", fs.getRootDir())
         fs.mkdir("two", dir)
         val file = fs.create("three", dir)
 
@@ -150,7 +150,7 @@ class FileSystemOpsTest {
     @Test
     fun deleteFromTheMiddle() {
         val fs = prepareFs("deleteFromTheMiddle")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         val dir1 = fs.mkdir("one", root)
         fs.mkdir("two", root)
         fs.mkdir("three", root)
@@ -162,7 +162,7 @@ class FileSystemOpsTest {
     @Test
     fun deleteFromTheEnd() {
         val fs = prepareFs("deleteFromTheEnd")
-        val root = fs.getRootFolder()
+        val root = fs.getRootDir()
         fs.mkdir("one", root)
         fs.mkdir("two", root)
         val dir3 = fs.mkdir("three", root)
@@ -179,5 +179,81 @@ class FileSystemOpsTest {
         val fsFromEmpty = FileSystem.relPath2fsPath(empty)
         assertEquals(fsFromOs, "${Constants.SEPARATOR}my${Constants.SEPARATOR}folder${Constants.SEPARATOR}file")
         assertEquals(fsFromEmpty, Constants.SEPARATOR)
+    }
+
+    @Test
+    fun createShortSyntax() {
+        val fs = prepareFs("createShortSyntax")
+        fs.create("/foo")
+        fs.mkdir("/bar")
+        fs.create("/bar/baz")
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", "..", "foo", "bar"))
+        assertEquals(fs.ls("/bar").map { it.first }, listOf(".", "..", "baz"))
+        fs.umount()
+    }
+
+    @Test
+    fun deleteShortSyntax() {
+        val fs = prepareFs("deleteShortSyntax")
+        fs.create("/foo")
+        fs.mkdir("/bar")
+        fs.create("/bar/baz")
+        fs.delete("/bar/baz")
+        assertEquals(fs.ls("/bar").map { it.first }, listOf(".", ".."))
+        fs.delete("/bar")
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", "..", "foo"))
+        fs.delete("/foo")
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", ".."))
+        fs.umount()
+    }
+
+    @Test
+    fun moveShortSyntax() {
+        val fs = prepareFs("moveShortSyntax")
+        fs.create("/foo")
+        fs.mkdir("/bar")
+        fs.create("/bar/baz")
+        fs.move("/bar/baz", "/")
+        assertEquals(fs.ls("/bar").map { it.first }, listOf(".", ".."))
+        assertEquals(fs.ls("/").map { it.first }, listOf(".", "..", "foo", "bar", "baz"))
+        fs.umount()
+    }
+
+    @Test
+    fun renameShortSyntax() {
+        val fs = prepareFs("renameShortSyntax")
+        val foo = fs.create("/foo")
+        fs.mkdir("/bar")
+        val baz = fs.create("/bar/baz")
+        val bar = fs.open("/bar") // size got changed
+        fs.rename("newfoo", "/foo")
+        fs.rename("newbaz", "/bar/baz")
+        assertEquals(foo, fs.open("/newfoo"))
+        assertEquals(baz, fs.open("/bar/newbaz"))
+        assertEquals(bar, fs.open("/bar"))
+        fs.rename("newbar", "/bar")
+        assertEquals(bar, fs.open("/newbar"))
+        assertEquals(baz, fs.open("/newbar/newbaz"))
+        fs.umount()
+    }
+
+    @Test
+    fun mkdirShortSyntax() {
+        val fs = prepareFs("mkdirShortSyntax")
+        fs.mkdir("/foo")
+        fs.mkdir("/foo/bar")
+        fs.mkdir("/foo/bar/baz")
+        assertEquals(fs.ls("/foo/bar/baz").map { it.first }, listOf(".", ".."))
+        fs.umount()
+    }
+
+    @Test
+    fun maxDiskAllocation() {
+        val disk = Disk(Paths.get("build", "maxDiskAllocation.jb"), Int.MAX_VALUE)
+        val fs = FileSystem(disk)
+        fs.format()
+        fs.mount()
+        println(fs.fstat())
+        fs.umount()
     }
 }

@@ -20,7 +20,7 @@ class FileSystemFunctionalTest {
         fs.mount()
 
         val rootPath = File(".").toPath().toAbsolutePath()
-        val listOfFiles = copyFilesToFS(rootPath, fs, fs.getRootFolder())
+        val listOfFiles = copyFilesToFS(rootPath, fs, fs.getRootDir())
         logStats("Initial copy", fs.fstat())
         listOfFiles.shuffle()
         for (i in 0..(listOfFiles.size * 70 / 100)) {
@@ -36,7 +36,7 @@ class FileSystemFunctionalTest {
         }
         logStats("Removing files", fs.fstat())
         val newPrefix = "newdir4test"
-        val newRoot = fs.mkdir(newPrefix, fs.getRootFolder())
+        val newRoot = fs.mkdir(newPrefix, fs.getRootDir())
         val newListOfFiles = copyFilesToFS(rootPath, fs, newRoot)
         logStats("Reinsert files", fs.fstat())
         fs.umount()

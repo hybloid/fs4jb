@@ -3,16 +3,16 @@ package fs4jb
 import mu.KotlinLogging
 import java.io.File
 import java.nio.ByteBuffer
-import kotlin.collections.ArrayDeque
+import java.util.BitSet
 import kotlin.time.ExperimentalTime
 import kotlin.time.measureTimedValue
 
 
 class FileSystem(private val disk: Disk) {
     lateinit var sb: SuperBlock
+    lateinit var freeInodes: BitSet
+    lateinit var freeDataBlocks: BitSet
     private val logger = KotlinLogging.logger {}
-    private val freeInodes = ArrayDeque<Int>()
-    private val freeDataBlocks = ArrayDeque<Int>()
 
     /**
      * FS Main routines
@@ -22,20 +22,16 @@ class FileSystem(private val disk: Disk) {
      * Formats the drive. If it exists, the content will be overwritten
      */
     fun format() {
-        sb = SuperBlock(disk.nBlocks)
         disk.open(true)
+        initSb()
         sb.write(disk)
         // reserve data for inodes
         for (i in 0 until sb.inodeBlocks) {
             disk.write(i, Constants.zeroBlock())
         }
-        for (i in 0 until sb.inodeBlocks * Constants.INODES_PER_BLOCK) {
-            freeInodes.addLast(i)
-        }
-        for (i in sb.inodeBlocks until sb.blocks) {
-            freeDataBlocks.addLast(i)
-        }
-        mkdir(Constants.SEPARATOR)
+        freeInodes.set(0, sb.inodes)
+        freeDataBlocks.set(sb.inodeBlocks, sb.blocks)
+        mkdir(Constants.SEPARATOR, null)
         logger.info("Disk formatted with ${disk.nBlocks} blocks")
         umount()
     }
@@ -45,7 +41,7 @@ class FileSystem(private val disk: Disk) {
      */
     fun mount() {
         disk.open()
-        sb = SuperBlock.read(disk)
+        initSb()
         if (sb.magicNumber != Constants.MAGIC) throw FSArgumentsException("Supplied disk image has incorrect structure")
         logger.info("Disk mounted")
         fsck()
@@ -76,15 +72,16 @@ class FileSystem(private val disk: Disk) {
 
     /**
      * Allocate new inode with next free number
+     * @return created inode object
      */
     fun createINode(): INode {
-        if (freeInodes.size == 0) throw FSIOException("Not enough inodes")
-        val freeInodeNumber = freeInodes.removeFirst()
+        val freeInodeNumber = getFreeInodeNum()
         return INode(freeInodeNumber, true, false, 0, Constants.LINKS_ARRAY.copyOf(), 0)
     }
 
     /**
      * Retrieve inode by number
+     * @return inode object with the given id
      */
     fun retrieveINode(n: Int): INode {
         val buf = Constants.zeroBlock()
@@ -97,75 +94,143 @@ class FileSystem(private val disk: Disk) {
         return inode
     }
 
+    private fun initSb() {
+        sb = SuperBlock(disk.nBlocks)
+        freeInodes = BitSet(sb.inodes)
+        freeDataBlocks = BitSet(sb.blocks)
+    }
+
+    private fun getFreeInodeNum(): Int {
+        val number = freeInodes.nextSetBit(0)
+        freeInodes.clear(number)
+        return number
+    }
+
+    private fun getFreeDataBlockNum(): Int {
+        val number = freeDataBlocks.nextSetBit(sb.inodeBlocks)
+        freeDataBlocks.clear(number)
+        return number
+    }
+
     /**
      * FS file/directory ops
      */
 
     /**
-     * Get inode of the root folder
+     * Get inode of the root directory
+     * @return inode object of the "/" directory
      */
-    fun getRootFolder() = retrieveINode(0)
+    fun getRootDir() = retrieveINode(0)
 
     /**
-     * Get inode of file/folder by its path
+     * Get inode of file/directory by its path
+     * @param path target path to the file/directory
+     * @return inode object of the file/directory
      */
-    fun open(path: String): INode {
-        var inode = getRootFolder()
-        if (path == Constants.SEPARATOR) return inode
-        val subPaths = path.split(Constants.SEPARATOR)
-        for (i in 1 until subPaths.size) {
-            inode = locate(subPaths[i], inode)
+    fun open(path: String) = locateEntryAndParent(path).entry
+
+    /**
+     * Create a file in a given directory
+     * @param path target path to the file
+     * @return inode object of the created file
+     */
+    fun create(path: String): INode {
+        val pathParts = parsePath(path)
+        if (pathParts.directory == Constants.SEPARATOR) {
+            return create(path.substring(1), getRootDir())
         }
-        return inode
+        return create(pathParts.name, open(pathParts.directory))
     }
 
     /**
-     * Create a file in a given folder
+     * Create a file in a given directory
+     * @param name file name
+     * @param dir inode object of the target directory
+     * @return inode object of the created file
      */
-    fun create(name: String, folder: INode): INode {
+    fun create(name: String, dir: INode): INode {
         val inode = createINode()
         writeInodeToDisk(inode, Constants.zeroBlock())
-        addToDir(name, inode, folder)
+        addToDir(name, inode, dir)
         return inode
     }
 
     /**
-     * Delete a file from a given folder
+     * Delete a file from a given directory
+     * @param path target path to the file/directory
      */
-    fun delete(entry: INode, folder: INode) {
+    fun delete(path: String) {
+        val entryAndParent = locateEntryAndParent(path)
+        delete(entryAndParent.entry, entryAndParent.parent)
+    }
+
+    /**
+     * Delete a file from a given directory
+     * @param entry inode object for the file/directory to be removed
+     * @param dir inode object for the directory containing entry
+     */
+    fun delete(entry: INode, dir: INode) {
         if (entry.isDir && ls(entry).any { it.first != "." && it.first != ".." }) {
             throw FSArgumentsException("Dir is not empty")
         }
+        deleteFromDir(entry, dir)
         entry.valid = false // state will be written during truncate
         truncate(entry, 0)
-        deleteFromDir(entry, folder)
-        freeInodes.addFirst(entry.number)
+        freeInodes.set(entry.number)
     }
 
     /**
      * Move file/directory from one to another
+     * @param path current path to the file/directory
+     * @param dstDir new target directory
      */
-    fun move(entry: INode, srcFolder: INode, dstFolder: INode) {
-        if (!srcFolder.isDir || !dstFolder.isDir) throw FSArgumentsException("Incorrect arguments")
-        val name = deleteFromDir(entry, srcFolder)
-        addToDir(name, entry, dstFolder)
+    fun move(path: String, dstDir: String) {
+        val entryAndParent = locateEntryAndParent(path)
+        val dstDirInode = open(dstDir)
+        move(entryAndParent.entry, entryAndParent.parent, dstDirInode)
     }
 
     /**
-     * Rename file/directory in the given folder
+     * Move file/directory from one to another
+     * @param entry inode object of the file/directory to be moved
+     * @param srcDir inode object of the source directory
+     * @param dstDir inode object of the destination directory
      */
-    fun rename(name: String, entry: INode, folder: INode) {
-        if (!folder.isDir) throw FSArgumentsException("Incorrect arguments")
+    fun move(entry: INode, srcDir: INode, dstDir: INode) {
+        if (!srcDir.isDir || !dstDir.isDir) throw FSArgumentsException("Incorrect arguments")
+        val name = deleteFromDir(entry, srcDir)
+        addToDir(name, entry, dstDir)
+    }
+
+    /**
+     * Rename file/directory in the given directory
+     * @param name new file/directory name
+     * @param path full path to the renamed file/directory
+     */
+    fun rename(name: String, path: String) {
+        if (name.contains(Constants.SEPARATOR)) throw FSArgumentsException("Incorrect arguments")
+        val entryAndParent = locateEntryAndParent(path)
+        rename(name, entryAndParent.entry, entryAndParent.parent)
+    }
+
+    /**
+     * Rename file/directory in the given directory
+     * @param name new file/directory name
+     * @param entry inode object of the file/directory to be renamed
+     * @param parentDir inode object of the parent directory
+     */
+    fun rename(name: String, entry: INode, parentDir: INode) {
+        if (!parentDir.isDir) throw FSArgumentsException("Incorrect arguments")
         // FIXME: we do not check . and .. here
-        val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
-        val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
-        read(folder, targetBuf, 0, folder.size)
+        val dentries = parentDir.size / Constants.DENTRY_SIZE
+        if (parentDir.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
+        val targetBuf = ByteBuffer.allocate(parentDir.size) // Expensive
+        read(parentDir, targetBuf, 0, parentDir.size)
         for (i in 0 until dentries) {
             val num = targetBuf.getInt(i * Constants.DENTRY_SIZE + Constants.FILENAME_SIZE)
             if (num == entry.number) {
                 targetBuf.position(i * Constants.DENTRY_SIZE)
-                write(folder, wrapNameForDentry(name), i * Constants.DENTRY_SIZE, Constants.FILENAME_SIZE)
+                write(parentDir, wrapNameForDentry(name), i * Constants.DENTRY_SIZE, Constants.FILENAME_SIZE)
                 return
             }
         }
@@ -173,36 +238,61 @@ class FileSystem(private val disk: Disk) {
     }
 
     /**
-     * Create a directory in a given folder
+     * Create new directory
+     * @param path full path to the new directory. Parent directory should exist
+     * @return inode object of the created directory
      */
-    fun mkdir(name: String, folder: INode? = null): INode {
+    fun mkdir(path: String): INode {
+        val pathParts = parsePath(path)
+        if (pathParts.directory == Constants.SEPARATOR) {
+            return mkdir(pathParts.name, getRootDir())
+        }
+        return mkdir(pathParts.name, open(pathParts.directory))
+    }
+
+    /**
+     * Create new directory
+     * @param name short name of the new directory
+     * @param parentDir inode object of the parent directory. Null as a special case for creating /
+     * @return inode object of the created directory
+     */
+    fun mkdir(name: String, parentDir: INode?): INode {
         val inode = createINode()
         inode.isDir = true
         val buffer = ByteBuffer.allocate(Constants.DENTRY_SIZE * 2)
         buffer.put(wrapNameForDentry("."))
         buffer.putInt(inode.number)
         buffer.put(wrapNameForDentry(".."))
-        if (folder == null) {
+        if (parentDir == null) {
             buffer.putInt(inode.number)
         } else {
-            buffer.putInt(folder.number)
+            buffer.putInt(parentDir.number)
         }
         write(inode, buffer, 0, buffer.limit())
-        if (folder != null) {
-            addToDir(name, inode, folder)
+        if (parentDir != null) {
+            addToDir(name, inode, parentDir)
         }
         return inode
     }
 
     /**
-     * List files/dictionaries in a given folder
+     * List files/dictionaries in a given directory
+     * @param path path to the target directory
+     * @return list of pairs - file/directory name and inode id
      */
-    fun ls(folder: INode): List<Pair<String, Int>> {
-        val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
+    fun ls(path: String): List<Pair<String, Int>> = ls(open(path))
+
+    /**
+     * List files/dictionaries in a given directory
+     * @param dir inode object of the target directory
+     * @return list of pairs - file/directory name and inode id
+     */
+    fun ls(dir: INode): List<Pair<String, Int>> {
+        val dentries = dir.size / Constants.DENTRY_SIZE
+        if (dir.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
         val list = mutableListOf<Pair<String, Int>>()
-        val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
-        read(folder, targetBuf, 0, folder.size)
+        val targetBuf = ByteBuffer.allocate(dir.size) // Expensive
+        read(dir, targetBuf, 0, dir.size)
         val dentryName = ByteArray(Constants.FILENAME_SIZE)
         for (i in 0 until dentries) {
             targetBuf.get(dentryName)
@@ -213,7 +303,7 @@ class FileSystem(private val disk: Disk) {
         return list
     }
 
-    private fun addToDir(name: String, entry: INode, folder: INode) {
+    private fun addToDir(name: String, entry: INode, dir: INode) {
         // FIXME: we do not check name duplicates here
         // FIXME: we do not check . and .. here
         if (name.contains(Constants.SEPARATOR) || name.length > Constants.FILENAME_SIZE) {
@@ -222,16 +312,16 @@ class FileSystem(private val disk: Disk) {
         val buffer = ByteBuffer.allocate(Constants.DENTRY_SIZE)
         buffer.put(wrapNameForDentry(name))
         buffer.putInt(entry.number)
-        write(folder, buffer, folder.size, buffer.limit())
+        write(dir, buffer, dir.size, buffer.limit())
     }
 
-    private fun deleteFromDir(entry: INode, folder: INode): String {
-        if (!folder.isDir) throw FSArgumentsException("Incorrect arguments")
+    private fun deleteFromDir(entry: INode, dir: INode): String {
+        if (!dir.isDir) throw FSArgumentsException("Incorrect arguments")
         // FIXME: we do not check . and .. here
-        val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
-        val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
-        read(folder, targetBuf, 0, folder.size)
+        val dentries = dir.size / Constants.DENTRY_SIZE
+        if (dir.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
+        val targetBuf = ByteBuffer.allocate(dir.size) // Expensive
+        read(dir, targetBuf, 0, dir.size)
         for (i in 0 until dentries) {
             val num = targetBuf.getInt(i * Constants.DENTRY_SIZE + Constants.FILENAME_SIZE)
             if (num == entry.number) {
@@ -241,13 +331,13 @@ class FileSystem(private val disk: Disk) {
                 val name = String(trim(bufForName), Constants.CHARSET)
                 if (i == dentries - 1) {
                     // corner case
-                    truncate(folder, i * Constants.DENTRY_SIZE)
+                    truncate(dir, i * Constants.DENTRY_SIZE)
                 } else {
                     val restBuf = ByteBuffer.allocate((dentries - i - 1) * Constants.DENTRY_SIZE)
                     targetBuf.position((i + 1) * Constants.DENTRY_SIZE)
                     restBuf.put(targetBuf)
-                    truncate(folder, i * Constants.DENTRY_SIZE)
-                    write(folder, restBuf, i * Constants.DENTRY_SIZE, restBuf.limit())
+                    truncate(dir, i * Constants.DENTRY_SIZE)
+                    write(dir, restBuf, i * Constants.DENTRY_SIZE, restBuf.limit())
                 }
                 return name
             }
@@ -255,11 +345,11 @@ class FileSystem(private val disk: Disk) {
         throw FSIOException("File not found")
     }
 
-    private fun locate(name: String, folder: INode): INode {
-        val dentries = folder.size / Constants.DENTRY_SIZE
-        if (folder.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
-        val targetBuf = ByteBuffer.allocate(folder.size) // Expensive
-        read(folder, targetBuf, 0, folder.size)
+    private fun locate(name: String, dir: INode): INode {
+        val dentries = dir.size / Constants.DENTRY_SIZE
+        if (dir.size.mod(Constants.DENTRY_SIZE) != 0 || dentries < 2) throw FSBrokenStateException("FS is corrupted")
+        val targetBuf = ByteBuffer.allocate(dir.size) // Expensive
+        read(dir, targetBuf, 0, dir.size)
         val dentryName = ByteArray(Constants.FILENAME_SIZE)
         val targetName = wrapNameForDentry(name).array()
         for (i in 0 until dentries) {
@@ -273,11 +363,26 @@ class FileSystem(private val disk: Disk) {
         throw FSIOException("File not found")
     }
 
+    private fun locateEntryAndParent(path: String): INodePair {
+        if (path[0] != Constants.SEPARATOR[0]) throw FSArgumentsException("Incorrect arguments")
+        var inode = getRootDir()
+        var parent = inode
+        if (path == Constants.SEPARATOR) return INodePair(inode, parent)
+        val subPaths = path.split(Constants.SEPARATOR)
+        for (i in 1 until subPaths.size) {
+            parent = inode
+            inode = locate(subPaths[i], inode)
+        }
+        return INodePair(inode, parent)
+    }
+
     /**
      * FS low level read-write routines
      */
     /**
      * Read the file contents from the beginning to the end
+     * @param inode inode object of the file to be read
+     * @return ByteArray of all the contents
      */
     fun readToEnd(inode: INode): ByteArray {
         val buffer = ByteBuffer.allocate(inode.size)
@@ -287,11 +392,19 @@ class FileSystem(private val disk: Disk) {
 
     /**
      * Read the file contents from the beginning to max buffer size
+     * @param inode inode object of the file to be read
+     * @param buffer ByteBuffer to be read. Number of read bytes is limited with buffer size
+     * @return count of read bytes
      */
     fun read(inode: INode, buffer: ByteBuffer) = read(inode, buffer, 0, buffer.limit())
 
     /**
      * Read the file contents from the given offset limited by length
+     * @param inode inode object of the file to be read
+     * @param buffer ByteBuffer to be read
+     * @param start starting offset
+     * @param length count of bytes to be read
+     * @return count of read bytes
      */
     @OptIn(ExperimentalTime::class)
     fun read(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
@@ -345,16 +458,27 @@ class FileSystem(private val disk: Disk) {
 
     /**
      * Write to the file from the beginning to max buffer size
+     * @param inode inode object of the file to be written to
+     * @param buffer ByteBuffer to be written
+     * @return count of written bytes
      */
     fun write(inode: INode, buffer: ByteBuffer) = write(inode, buffer, 0, buffer.limit())
 
     /**
      * Append to the end of the file
+     * @param inode inode object of the file to be appended to
+     * @param buffer ByteBuffer to be written
+     * @return count of written bytes
      */
     fun append(inode: INode, buffer: ByteBuffer) = write(inode, buffer, inode.size, buffer.limit())
 
     /**
      * Write to the file from the given offset limited by length
+     * @param inode inode object of the file to be written to
+     * @param buffer ByteBuffer to be written
+     * @param start starting offset
+     * @param length count of bytes to be written
+     * @return count of written bytes
      */
     @OptIn(ExperimentalTime::class)
     fun write(inode: INode, buffer: ByteBuffer, start: Int, length: Int): Int {
@@ -380,15 +504,13 @@ class FileSystem(private val disk: Disk) {
             var inodeUpdateNeeded = false
             for (i in startBlockId..endBlockId) {
                 if (i >= Constants.LINKS_IN_INODE && inode.indirect == 0) {
-                    if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
-                    inode.indirect = freeDataBlocks.removeFirst()
+                    inode.indirect = getFreeDataBlockNum()
                     disk.write(inode.indirect, buf) // TODO : do this only when this block was not allocated
                     inodeUpdateNeeded = true
                 }
 
                 if (inode.links[i] == 0) {
-                    if (freeDataBlocks.size == 0) throw FSIOException("Not enough data blocks")
-                    inode.links[i] = freeDataBlocks.removeFirst()
+                    inode.links[i] = getFreeDataBlockNum()
                     disk.write(inode.links[i], buf) // TODO : do this only when this block was not allocated
                     inodeUpdateNeeded = true
                 }
@@ -438,7 +560,9 @@ class FileSystem(private val disk: Disk) {
     }
 
     /**
-     * Truncate file contents
+     * Truncate file/directory contents
+     * @param inode inode object of the target file/directory
+     * @param offset offset starting from which all the contents go away
      */
     fun truncate(inode: INode, offset: Int) {
         if (offset < 0 || offset >= inode.size && offset != 0) throw FSArgumentsException("Incorrect arguments")
@@ -447,18 +571,18 @@ class FileSystem(private val disk: Disk) {
         val lastBlockId = inode.size / Constants.BLOCK_SIZE
         for (i in lastBlockId downTo startBlockId + 1) {
             if (inode.links[i] != 0) {
-                freeDataBlocks.addFirst(inode.links[i])
+                freeDataBlocks.set(inode.links[i])
                 inode.links[i] = 0
             }
         }
         if (startBlockId < Constants.LINKS_IN_INODE && inode.indirect != 0) {
-            freeDataBlocks.addFirst(inode.indirect)
+            freeDataBlocks.set(inode.indirect)
             inode.indirect = 0
         }
         if (offset == 0) {
             // special case, remove all blocks
             if (inode.links[0] != 0) {
-                freeDataBlocks.addFirst(inode.links[0])
+                freeDataBlocks.set(inode.links[0])
                 inode.links[0] = 0
             }
         } else {
@@ -479,9 +603,14 @@ class FileSystem(private val disk: Disk) {
      */
 
     /**
-     * Filesystem stat routines
+     * Filesystem statistics
      */
-    fun fstat() = FileSystemStat(freeInodes.size, sb.inodes, freeDataBlocks.size, sb.blocks - sb.inodeBlocks)
+    fun fstat() = FileSystemStat(
+        freeInodes.stream().count().toInt(),
+        sb.inodes,
+        freeDataBlocks.stream().count().toInt(),
+        sb.blocks - sb.inodeBlocks
+    )
 
     private fun writeInodeToDisk(inode: INode, buf: ByteBuffer) {
         disk.read(INode.getBlockNumber(inode.number), buf)
@@ -508,15 +637,31 @@ class FileSystem(private val disk: Disk) {
         return bytes.copyOf(i + 1)
     }
 
+    private fun parsePath(path: String): NameAndDir {
+        if (path == Constants.SEPARATOR) {
+            throw FSArgumentsException("Incorrect arguments")
+        }
+
+        // /dir1/dir2/
+        val lastIndexOfSeparator = path.lastIndexOf(Constants.SEPARATOR)
+        if (lastIndexOfSeparator == path.length - 1) {
+            throw FSArgumentsException("Incorrect arguments")
+        }
+
+        val name = path.substring(lastIndexOfSeparator + 1)
+        if (lastIndexOfSeparator == 0) {
+            return NameAndDir(name, Constants.SEPARATOR)
+        }
+        val dir = path.substring(0, lastIndexOfSeparator)
+        return NameAndDir(name, dir)
+    }
+
     private fun fsck() {
         val buf = Constants.zeroBlock()
-        val inodeBlocksBuf = ByteBuffer.allocate(sb.inodeBlocks * Constants.BLOCK_SIZE)
         val indirectBuf = Constants.zeroBlock()
-        val busyBlocks = mutableSetOf<Int>()
-        disk.channelRead(inodeBlocksBuf, Constants.SUPERBLOCK_SIZE.toLong())
+        freeDataBlocks.set(sb.inodeBlocks, sb.blocks)
         for (i in 0 until sb.inodeBlocks) {
-            buf.clear()
-            buf.put(inodeBlocksBuf.array(), i * Constants.BLOCK_SIZE, Constants.BLOCK_SIZE)
+            disk.read(i, buf)
             for (j in 0 until Constants.INODES_PER_BLOCK) {
                 val number = i * Constants.INODES_PER_BLOCK + j
                 if (INode.isValid(number, buf)) {
@@ -524,23 +669,18 @@ class FileSystem(private val disk: Disk) {
                     if (inode.indirect != 0) {
                         disk.read(inode.indirect, indirectBuf)
                         inode.readIndirect(indirectBuf)
-                        busyBlocks.add(inode.indirect)
+                        freeDataBlocks.clear(inode.indirect)
                     }
                     for (k in 0..Constants.INODE_TOTAL_LINKS_COUNT) {
                         if (inode.links[k] != 0) {
-                            busyBlocks.add(inode.links[k])
+                            freeDataBlocks.clear(inode.links[k])
                         } else {
                             break
                         }
                     }
                 } else {
-                    freeInodes.addLast(number)
+                    freeInodes.set(number)
                 }
-            }
-        }
-        for (i in sb.inodeBlocks until sb.blocks) {
-            if (!busyBlocks.contains(i)) {
-                freeDataBlocks.addLast(i)
             }
         }
     }
@@ -557,6 +697,16 @@ class FileSystem(private val disk: Disk) {
         val totalINodes: Int,
         val freeDataBlocks: Int,
         val totalDataBlocks: Int
+    )
+
+    private data class INodePair(
+        val entry: INode,
+        val parent: INode
+    )
+
+    private data class NameAndDir(
+        val name: String,
+        val directory: String
     )
 }
 

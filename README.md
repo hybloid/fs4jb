@@ -41,8 +41,14 @@
 3. RAM - cache the contents
 
 # Scalability
-1. Filesystem is suitable to store the files up to 4 Mb. 
-2. By increasing the block size we can increase the file size, but this will lead into increased internal fragmentation
-3. In order to get rid of O(n*n), B-Trees should be implemented both for inode pointers and dentries
-4. In order to get rid of dentry internal fragmentation, another storage concept for filenames should be implemented
-5. Implementation does not support multi-threading, so won't scale horizontally
+1. Filesystem is suitable to store the files up to 4 Mb.
+2. Filesystem max size is limited to 8TB.
+3. Current element limitations (see text FileSystemOpsTest.maxDiskAllocation)
+   1. freeInodes=63999
+   2. totalINodes=64000
+   3. freeDataBlocks=2147483146
+   4. totalDataBlocks=2147483147
+4. By increasing the block size we can increase the file size, but this will lead into increased internal fragmentation
+5. In order to get rid of O(n*n), B-Trees should be implemented both for inode pointers and dentries
+6. In order to get rid of dentry internal fragmentation, another storage concept for filenames should be implemented
+7. Implementation does not support multi-threading, so won't scale horizontally
