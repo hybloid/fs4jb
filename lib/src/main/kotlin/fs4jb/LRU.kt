@@ -1,10 +1,10 @@
 package fs4jb
 
-class LRU(val purgeRoutine: (Any, Any) -> Unit) {
-    private val cache = LinkedHashMap<Any, Any>()
-    private val keyCycle = ArrayDeque<Any>()
+class LRU<T, E>(val purgeRoutine: (T, E) -> Unit) {
+    private val cache = LinkedHashMap<T, E>()
+    private val keyCycle = ArrayDeque<T>()
 
-    fun put(idx: Any, elem: Any) {
+    fun put(idx: T, elem: E) {
         if (cache.size >= Constants.LRU_CACHE_LIMIT) {
             val lastIdx = keyCycle.removeLast()
             val entry = cache.remove(lastIdx) ?: throw FSBrokenStateException("FS Cache problem")
@@ -15,7 +15,7 @@ class LRU(val purgeRoutine: (Any, Any) -> Unit) {
         keyCycle.addFirst(idx)
     }
 
-    fun get(idx: Any): Any? {
+    fun get(idx: T): Any? {
         val entry = cache[idx] ?: return null
         keyCycle.remove(idx)
         keyCycle.addFirst(idx)

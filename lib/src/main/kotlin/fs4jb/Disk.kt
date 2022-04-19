@@ -7,12 +7,7 @@ import java.nio.file.Path
 
 class Disk(private val path: Path, val nBlocks: Int) {
     private lateinit var channel: FileChannel
-    private val cache = LRU { idx: Any, buf: Any ->
-        writeEntryToDisk(
-            idx as Int,
-            buf as ByteArray
-        )
-    }
+    private val cache = LRU { idx: Int, buf: ByteArray -> writeEntryToDisk(idx, buf) }
 
     fun open(recreate: Boolean = false) {
         Metrics.reset()
